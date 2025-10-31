@@ -1,0 +1,83 @@
+# service.yaml
+# Configuration for the lti-task-manager Cloud Run service.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: lti-task-manager
+spec:
+  template:
+    spec:
+      containers:
+      - image: gcr.io/moodle-kn/lti-task-manager # Will be updated by the build step
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PLATFORM_ISS
+          value: "https://katjanoponen.moodlecloud.com"
+        - name: PLATFORM_AUTHORIZATION_ENDPOINT
+          value: "https://katjanoponen.moodlecloud.com/mod/lti/auth.php"
+        - name: PLATFORM_TOKEN_ENDPOINT
+          value: "https://katjanoponen.moodlecloud.com/mod/lti/token.php"
+        - name: PLATFORM_JWKS_ENDPOINT
+          value: "https://katjanoponen.moodlecloud.com/mod/lti/certs.php"
+        - name: NEXT_PUBLIC_TOOL_HOST
+          value: "https://lti-task-manager-67832099934.europe-north1.run.app"
+        - name: MOODLE_API_URL
+          value: "https://katjanoponen.moodlecloud.com/webservice/rest/server.php"
+        - name: TOOL_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lti-tool-private-key
+              key: latest
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: lti-session-secret
+              key: latest
+        - name: PLATFORM_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: lti-platform-client-id
+              key: latest
+        - name: PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lti-public-key
+              key: latest
+        - name: FIREBASE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: firebase-api-key
+              key: latest
+        - name: FIREBASE_AUTH_DOMAIN
+          valueFrom:
+            secretKeyRef:
+              name: firebase-auth-domain
+              key: latest
+        - name: FIREBASE_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: firebase-project-id
+              key: latest
+        - name: FIREBASE_STORAGE_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: firebase-storage-bucket
+              key: latest
+        - name: FIREBASE_MESSAGING_SENDER_ID
+          valueFrom:
+            secretKeyRef:
+              name: firebase-messaging-sender-id
+              key: latest
+        - name: FIREBASE_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: firebase-app-id
+              key: latest
+        - name: MOODLE_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: moodle-task-token
+              key: latest

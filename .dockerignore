@@ -1,0 +1,12 @@
+# .dockerignore
+
+# Ignore node_modules, as they will be installed in the container
+node_modules
+
+# Ignore build artifacts
+.next
+npm-debug.log
+*.log
+
+# Ignore Git directory
+.git

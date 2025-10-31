@@ -1,0 +1,13 @@
+# cloudbuild.yaml
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  # This step builds the Docker image.
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    docker build --no-cache -t gcr.io/$_PROJECT_ID/$_SERVICE_NAME .
+
+# Push the container image to Container Registry
+images:
+- 'gcr.io/$_PROJECT_ID/$_SERVICE_NAME'

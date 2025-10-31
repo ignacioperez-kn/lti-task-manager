@@ -1,0 +1,770 @@
+<script>
+// --- Enhanced SCORM 1.2 helper ---
+const Scorm = (() => {
+  let api = null, inited = false, startTime = null;
+  const findAPI = (win) => {
+    let n = 0;
+    while(n < 10) { // Limit iterations to prevent infinite loops
+      try {
+        // Try to access parent and its API
+        if (win && win.API) {
+          return win.API;
+        }
+        if (!win || !win.parent || win.parent === win) {
+          // Stop if we have no window, no parent, or the parent is itself
+          return null;
+        }
+        win = win.parent;
+      } catch (e) {
+        // If a SecurityError is thrown, we've hit a cross-origin boundary.
+        console.warn("SCORM findAPI failed due to cross-origin frame. This is expected in some environments.");
+        return null; // Stop searching upwards
+      }
+      n++;
+    }
+    return null;
+  };
+  const getAPI = () => api || (api = findAPI(window) || findAPI(window.top) || null);
+  const init = () => {
+    if (inited) return true;
+    const a = getAPI();
+    if (!a) return false;
+    inited = (a.LMSInitialize("") === "true");
+    if (inited) startTime = new Date();
+    return inited;
+  };
+  const get  = (k) => { const a = getAPI(); return a ? a.LMSGetValue(k) : null; };
+  const set  = (k, v) => { const a = getAPI(); return a ? (a.LMSSetValue(k, String(v)) === "true") : false; };
+  const commit = () => { const a = getAPI(); return a ? (a.LMSCommit("") === "true") : false; };
+  // Function to format time for SCORM 1.2 (HH:MM:SS.SS)
+  const formatTime = (ms) => {
+    const totalSeconds = Math.round(ms / 1000);
+    const seconds = totalSeconds % 60;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const minutes = totalMinutes % 60;
+    const hours = Math.floor(totalMinutes / 60);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.00`;
+  };
+  const finish = () => {
+    const a = getAPI();
+    if (a && startTime) {
+      const duration = new Date() - startTime;
+      set("cmi.core.session_time", formatTime(duration));
+      a.LMSFinish("");
+    }
+  };
+  return { init, get, set, commit, finish };
+})();
+
+// Call once when you’re ready to talk to SCORM (we also call it in reportToScorm)
+function reportToScorm({ scoreRaw = null, status = "completed" } = {}) {
+  if (!Scorm.init()) return; // not running as SCORM, fail silently
+  if (typeof scoreRaw === "number") {
+    Scorm.set("cmi.core.score.raw", Math.round(scoreRaw)); // 0..100
+    Scorm.set("cmi.core.score.min", 0);
+    Scorm.set("cmi.core.score.max", 100);
+  }
+  Scorm.set("cmi.core.lesson_status", status); // completed | passed | failed, etc.
+  Scorm.commit();
+}
+</script>
+
+<div id="skills-wizard"
+  style="max-width: 980px; margin: 0 auto; padding: 24px 16px; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: #111827; line-height: 1.5;">
+  <!-- Header / Progress -->
+  <div
+    style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px;">
+    <h1 style="margin: 0; font-size: 24px; letter-spacing: -0.01em;">Taitojen
+      tunnistaminen</h1>
+    <div id="progress-label" style="font-weight: 600; color: #4b5563;">Vaihe 1 /
+      6</div>
+  </div>
+  <div
+    style="height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin-bottom: 20px;"
+    aria-hidden="true">
+    <div id="progress-bar"
+      style="height: 100%; width: 20%; background: #1f2b43; border-radius: 999px; transition: width .25s ease;">
+    </div>
+  </div>
+  <!-- Dynamic content -->
+  <div id="stage-container"></div>
+  <!-- Nav buttons -->
+  <div
+    style="display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 20px;">
+    <div><button id="reset-stage"
+        style="padding: 10px 14px; border: 1px solid #e5e7eb; background: #fff; color: #1f2937; border-radius: 8px; font-weight: 600; cursor: pointer;"
+        type="button"> Nollaa tämä vaihe </button></div>
+    <div style="display: flex; gap: 10px;"><button id="back-btn"
+        style="padding: 10px 14px; border: 1px solid #e5e7eb; background: #fff; color: #1f2937; border-radius: 8px; font-weight: 600; cursor: pointer;"
+        type="button"> Takaisin </button> <button id="next-btn"
+        style="padding: 10px 16px; border: none; background: #1f2b43; color: #fff; border-radius: 8px; font-weight: bold; cursor: not-allowed; opacity: .6;"
+        type="button"> Seuraava </button></div>
+  </div>
+</div>
+<p>
+  <script>
+    (function() {
+      try {
+      // ---------- Data ----------
+      const COLOR_BASE = "#1f2b43"; // unselected bg + white text
+      const COLOR_SELECTED = "#d2dda9"; // selected bg + dark text
+      const COLOR_SELECTED_TEXT = "#111827";
+
+      const vahvuudet = [
+        "Ahkera", "Aloitekykyinen", "Analyyttinen", "Antelias", "Avoin",
+        "Avulias", "Diplomaattinen", "Eloisa", "Energinen", "Epäitsekäs",
+        "Eteenpäin pyrkivä", "Empaattinen", "Harkitseva", "Herkkä",
+        "Hienotunteinen", "Hillitty", "Huolellinen", "Huomaavainen",
+        "Huumorintajuinen", "Hyväntahtoinen",
+        "Iloinen", "Innokas", "Itseensä luottava", "Itsenäinen",
+        "Järjestelmällinen", "Johdonmukainen", "Kekseliäs", "Kohtelias",
+        "Kypsä", "Kärsivällinen",
+        "Käytännöllinen", "Kyky oppia uutta", "Luova", "Luotettava",
+        "Mahdollisuuksiin tarttuva", "Maltillinen", "Mielikuvituksellinen",
+        "Miellyttävä", "Määrätietoinen", "Neuvokas",
+        "Nopea", "Nöyrä", "Oikeudenmukainen", "Oma-aloitteinen",
+        "Oppimishaluinen", "Optimistinen", "Organisointikykyinen",
+        "Paineensietokykyinen", "Perusteellinen", "Pitkäjänteinen",
+        "Pohdiskeleva", "Päättäväinen", "Rauhallinen", "Realistinen",
+        "Rehellinen", "Riskinottokykyinen", "Sinnikäs", "Sopeutuva",
+        "Sosiaalinen", "Suunnitelmallinen",
+        "Tasapainoinen", "Tehokas", "Tiedonhaluinen", "Tunnollinen",
+        "Täsmällinen", "Uskalias", "Uskollinen", "Vastuunottokykyinen",
+        "Vahva", "Vilpitön",
+        "Ystävällinen", "Yritteliäs", "Ratkaisukeskeinen"
+      ];
+
+      const kovat = [
+        "Asiakashankinta ja asiakassuhteiden ylläpito",
+        "Avaruudellinen hahmotuskyky", "Budjetointi", "Brändiosaaminen",
+        "Digitaalinen lukutaito",
+        "Hakukoneiden käyttö", "Lainsäädännön tuntemus", "Kirjanpito",
+        "Kielitaito", "Kokeilun halu", "Laatuosaaminen", "Laskutaidot",
+        "Logistinen osaaminen",
+        "Matemaattinen hahmotuskyky", "Markkinaosaaminen",
+        "Markkinointiosaaminen", "Myyntitaidot",
+        "Myyntiprosessien hallinta", "Office-työkalut", "Ohjelmointitaidot",
+        "Opettaminen", "Osakekauppa", "Palveluosaaminen",
+        "Päässälaskutaito", "Projektien johtaminen", "Projektiosaaminen",
+        "Prosessien johtaminen", "Rakentamistaidot",
+        "Riskinhallinta", "Raportointi", "Strateginen ajattelu",
+        "Some-osaaminen", "Taloushallinta/taloussuunnittelu",
+        "Tuotekehitysosaaminen", "Tutkimusosaaminen",
+        "Tiedon hallinta ja hyödyntäminen", "Tiedonhankintataidot",
+        "Tietotekniset taidot", "Ulkomaankaupan osaaminen",
+        "Useiden ohjelmistojen käyttötaito",
+        "Vaikuttamistaito", "Verkostoitumistaidot", "Yrittäjyystaidot"
+      ];
+
+      const pehmeat = [
+        "Ajan hallinta", "Esiintymistaito", "Ennakointiosaaminen",
+        "Ideoiden kehitys", "Ihmisten arviointitaito", "Improvisointi",
+        "Joukkuehengen luominen",
+        "Kirjallinen viestintätaito", "Kulttuurinen herkkyys",
+        "Kyky hahmottaa ja hallita kokonaisuuksia",
+        "Kyky johtaa omaa työtä", "Kokeilun halu",
+        "Luottamuksen rakentaminen", "Looginen päättelykyky", "Motivointi",
+        "Muutosvalmius", "Muutoksen johtaminen", "Neuvottelutaito",
+        "Ongelmanratkaisutaito",
+        "Osaamisen johtaminen", "Palautteen antaminen ja vastaanottaminen",
+        "Päätöksentekotaito", "Priorisointi", "Resilienssi",
+        "Riskienhallinta- ja turvallisuusosaaminen", "Sosiaalinen älykkyys",
+        "Sovittelu", "Sopeutumiskyky", "Strateginen johtaminen", "Tunneäly",
+        "Tehtävien loppuun saattaminen", "Tulevaisuuskatseisuus",
+        "Vuorovaikutustaidot", "Yhteistyötaidot"
+      ];
+
+      // ---------- State ----------
+      const state = {
+        stage: 1, // 1..6
+        selected: {
+          vahvuudet: [],
+          kovat: [],
+          pehmeat: []
+        },
+        ratings: {}, // { skill: number }
+        top5: [],
+        details: {}, // { skill: text }
+        openQs: {
+          q1: "",
+          q2: "",
+          q3: "",
+          q4: ""
+        }
+      };
+
+      // ---------- Helpers ----------
+      const el = (tag, attrs = {}, children = []) => {
+        const e = document.createElement(tag);
+        Object.entries(attrs).forEach(([k, v]) => {
+          if (k === "style" && typeof v === "object") {
+            Object.entries(v).forEach(([prop, val]) => {
+              if (typeof val === 'string' && val.includes('!important')) {
+                e.style.setProperty(
+                  prop.replace(/([A-Z])/g, g => `-${g[0].toLowerCase()}`),
+                  val.replace('!important', '').trim(),
+                  'important'
+                );
+              } else {
+                e.style[prop] = val;
+              }
+            });
+          } else if (k === "dataset") {
+            Object.entries(v).forEach(([dk, dv]) => e.dataset[dk] = dv);
+          } else if (k.startsWith("on") && typeof v === "function") {
+            e[k] = v;
+          } else {
+            e.setAttribute(k, v);
+          }
+        });
+        const list = Array.isArray(children) ? children : [children];
+        list.filter(Boolean).forEach(c => {
+          e.appendChild(c instanceof Node ? c : document.createTextNode(c));
+        });
+        return e;
+      };
+
+      const TOTAL_STEPS = 6;
+
+      const setProgress = () => {
+        const label = document.getElementById("progress-label");
+        const bar = document.getElementById("progress-bar");
+        if (!label || !bar) return;
+        label.textContent = `Vaihe ${state.stage} / ${TOTAL_STEPS}`;
+        bar.style.width = `${(state.stage / TOTAL_STEPS) * 100}%`;
+      };
+
+      const saveStateToScorm = () => {
+        if (!Scorm.init()) return;
+        Scorm.set("cmi.suspend_data", JSON.stringify(state));
+        Scorm.commit();
+      };
+
+      const btnChip = (text, selected, onClick) => {
+        const b = el("button", {
+          type: "button",
+          "aria-pressed": selected ? "true" : "false",
+          style: {
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "10px 14px",
+            borderRadius: "9999px",
+            border: `1px solid ${selected ? COLOR_SELECTED : "#e5e7eb"}`,
+            backgroundColor: (selected ? COLOR_SELECTED : COLOR_BASE) + " !important",
+            color: (selected ? COLOR_SELECTED_TEXT : "#ffffff") + " !important",
+            fontWeight: "600",
+            cursor: "pointer",
+            boxShadow: selected ? "0 1px 2px rgba(0,0,0,.05)" : "none",
+            transition: "transform .05s ease",
+            userSelect: "none"
+          },
+          onclick: onClick
+        }, text);
+        b.onmouseenter = () => {
+          b.style.transform = "translateY(-1px)";
+        };
+        b.onmouseleave = () => {
+          b.style.transform = "none";
+        };
+        return b;
+      };
+
+      const sectionTitle = (title, subtitle) => el("div", {
+        style: {
+          marginBottom: "12px"
+        }
+      }, [
+        el("h2", {
+          style: {
+            margin: "0 0 6px 0",
+            fontSize: "20px"
+          }
+        }, title),
+        subtitle ? el("p", {
+          style: {
+            margin: "0",
+            color: "#4b5563"
+          }
+        }, subtitle) : null
+      ]);
+
+      const counterNote = (text) => el("div", {
+        style: {
+          marginTop: "8px",
+          color: "#6b7280",
+          fontSize: "14px"
+        }
+      }, text);
+
+      const gridWrap = () => el("div", {
+        style: {
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+          gap: "10px",
+          marginTop: "12px"
+        }
+      });
+
+      const note = (text) => el("div", {
+        style: {
+          marginTop: "10px",
+          color: "#ef4444",
+          fontWeight: "600",
+          display: "none"
+        },
+        id: "error-note"
+      }, text);
+
+      const enableNext = (enabled) => {
+        const nb = document.getElementById("next-btn");
+        if (!nb) return;
+        nb.style.cursor = enabled ? "pointer" : "not-allowed";
+        nb.style.opacity = enabled ? "1" : ".6";
+        nb.disabled = !enabled;
+        nb.style.setProperty("background-color", COLOR_BASE, "important");
+        nb.style.setProperty("color", "#fff", "important");
+        nb.style.border = "none";
+        nb.style.borderRadius = "8px";
+        nb.style.fontWeight = "700";
+      };
+
+      // ---------- Master Render Function ----------
+      const render = () => {
+        const resetBtn = document.getElementById("reset-stage");
+        const backBtn = document.getElementById("back-btn");
+        if (resetBtn) {
+          resetBtn.style.setProperty("color", "#1f2937", "important");
+          resetBtn.style.setProperty("background-color", "#fff", "important");
+        }
+        if (backBtn) {
+          backBtn.style.setProperty("color", "#1f2937", "important");
+          backBtn.style.setProperty("background-color", "#fff", "important");
+        }
+
+        setProgress();
+        switch (state.stage) {
+          case 1: renderStage1(); break;
+          case 2: renderStage2(); break;
+          case 3: renderStage3(); break;
+          case 4: renderStage4(); break;
+          case 5: renderStage5(); break;
+          case 6: renderStage6(); break;
+          default: renderStage1();
+        }
+      };
+
+      // ---------- Stage 1 (3 substeps, 5 each) ----------
+      let substep = 1;
+
+      const renderStage1 = () => {
+        const c = document.getElementById("stage-container");
+        c.innerHTML = "";
+
+        const container = el("div");
+
+        const subTitles = [
+          ["Henkilökohtaiset vahvuudet",
+            "Henkilökohtaiset vahvuudet ovat yksilön ominaisuuksia, kykyjä ja taitoja, jotka auttavat menestymään sekä työssä että henkilökohtaisessa elämässä. Nämä vahvuudet voivat liittyä persoonallisuuteen, käyttäytymiseen, vuorovaikutustaitoihin ja ongelmanratkaisutaitoihin. Ne ovat usein luonnollisia taipumuksia tai kehitettyjä kykyjä, jotka tukevat yksilön tavoitteiden saavuttamista ja hyvinvointia."
+          ],
+          ["Kovat taidot",
+            "Kovat taidot (engl. hard skills) ovat konkreettisia, teknisiä ja mitattavia taitoja, joita tarvitaan tietyssä työtehtävässä tai ammatissa. Ne ovat usein spesifisiä osaamisalueita, jotka voidaan oppia koulutuksen, kurssien tai käytännön kokemuksen kautta. Kovat taidot ovat selkeästi mitattavissa ja arvioitavissa, esimerkiksi testeillä, sertifikaateilla tai työnäytteillä."
+          ],
+          ["Pehmeät taidot",
+            "Pehmeät taidot (engl. “soft skills”) ovat henkilökohtaisia, vuorovaikutus- ja sosiaalisia taitoja, jotka vaikuttavat siihen, miten ihmiset ovat vuorovaikutuksessa toistensa kanssa, toimivat työpaikalla tai muissa sosiaalisissa ympäristöissä. Nämä taidot eivät yleensä liity suoraan teknisiin tai ammatillisiin tietotaitoihin, vaan ne keskittyvät enemmän ihmisten välisiin suhteisiin ja käyttäytymiseen."
+          ]
+        ];
+        const lists = [vahvuudet, kovat, pehmeat];
+        const keys = ["vahvuudet", "kovat", "pehmeat"];
+
+        const [title, subtitle] = subTitles[substep - 1];
+        const selectedList = state.selected[keys[substep - 1]];
+        const remain = 5 - selectedList.length;
+
+        container.appendChild(sectionTitle(`${substep}/3 — ${title}`,
+          subtitle));
+
+        container.appendChild(el("div", {
+          style: {
+            margin: "6px 0 10px 0",
+            padding: "8px 10px",
+            background: "#f8fafc",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            color: "#374151",
+            fontSize: "14px",
+            fontWeight: "600"
+          }
+        },
+          `Valitse 5 tästä osiosta. Valittuna: ${selectedList.length} / 5`
+        ));
+
+        const flow = el("div", {
+          style: {
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+            alignItems: "flex-start"
+          }
+        });
+
+        lists[substep - 1].forEach(item => {
+          const isSel = selectedList.includes(item);
+          const chip = btnChip(item, isSel, () => {
+            const arr = state.selected[keys[substep - 1]];
+            const i = arr.indexOf(item);
+            if (i >= 0) arr.splice(i, 1);
+            else {
+              if (arr.length === 5) return;
+              arr.push(item);
+            }
+            renderStage1();
+          });
+          flow.appendChild(chip);
+        });
+
+        container.appendChild(flow);
+
+        container.appendChild(counterNote(`Valitse vielä ${remain}`));
+        container.appendChild(note("Valitse tasan 5 ennen siirtymistä."));
+
+        c.appendChild(container);
+
+        document.getElementById("back-btn").style.visibility = (substep === 1) ? "hidden" : "visible";
+        document.getElementById("reset-stage").onclick = () => {
+          state.selected[keys[substep - 1]] = [];
+          renderStage1();
+        };
+        document.getElementById("back-btn").onclick = () => {
+          if (substep > 1) {
+            substep--;
+            renderStage1();
+          }
+        };
+        const next = document.getElementById("next-btn");
+        next.textContent = "Seuraava";
+        const canNextSub = selectedList.length === 5;
+        enableNext(canNextSub);
+        next.onclick = () => {
+          if (!canNextSub) {
+            document.getElementById("error-note").style.display = "block";
+            return;
+          }
+          if (substep < 3) {
+            substep++;
+            renderStage1();
+          } else {
+            state.stage = 2;
+            saveStateToScorm();
+            render();
+          }
+        };
+      };
+
+      // ---------- Stage 2: Ratings 1..5 ----------
+      const renderStage2 = () => {
+        const c = document.getElementById("stage-container");
+        c.innerHTML = "";
+
+        const all = [{ label: "Henkilökohtaiset vahvuudet", items: state.selected.vahvuudet },
+                     { label: "Kovat taidot", items: state.selected.kovat },
+                     { label: "Pehmeät taidot", items: state.selected.pehmeat }];
+
+        const container = el("div");
+        container.appendChild(sectionTitle("Taitojen arviointi (1–5)",
+          "Arvioi taitosi 1–5 välillä osaamisen mukaan. Klikkaa ympyröitä – mitä korkeampi luku, sitä useampi ympyrä täyttyy."
+        ));
+
+        const circle = (skill, value) => {
+          const current = state.ratings[skill] || 0;
+          const filled = value <= current;
+          return el("button", {
+            type: "button",
+            "aria-label": `${value}/5`,
+            style: { width: "26px", height: "26px", borderRadius: "9999px", margin: "0 2px", border: `2px solid ${filled ? "#d2dda9" : "#d1d5db"}`, backgroundColor: filled ? "#d2dda9" : "#ffffff", cursor: "pointer", transition: "all .15s ease" },
+            onclick: () => { state.ratings[skill] = value; renderStage2(); }
+          });
+        };
+
+        const makeRow = (skill) => {
+          const row = el("div", { style: { display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: "12px", alignItems: "center", margin: "10px 0" } });
+          const name = el("div", { style: { minWidth: 0 } }, skill);
+          const group = el("div", { style: { display: "flex", alignItems: "center" } });
+          for (let v = 1; v <= 5; v++) { group.appendChild(circle(skill, v)); }
+          const badge = el("span", { style: { marginLeft: "8px", fontSize: "12px", padding: "2px 6px", background: "#e5e7eb", borderRadius: "9999px", color: "#111827", fontWeight: "700" } }, `${state.ratings[skill] || "–"}/5`);
+          group.appendChild(badge);
+          row.appendChild(name);
+          row.appendChild(group);
+          return row;
+        };
+
+        let totalToRate = 0;
+        all.forEach(group => {
+          if (!group.items.length) return;
+          container.appendChild(el("h3", { style: { margin: "18px 0 8px 0", fontSize: "16px", color: "#1f2937" } }, group.label));
+          group.items.forEach(skill => { totalToRate++; container.appendChild(makeRow(skill)); });
+        });
+
+        const info = el("div", { id: "rate-info", style: { marginTop: "8px", color: "#6b7280", fontSize: "14px" } }, "");
+        container.appendChild(info);
+        container.appendChild(note("Arvioi kaikki taidot ennen siirtymistä."));
+        c.appendChild(container);
+
+        const back = document.getElementById("back-btn");
+        back.style.visibility = "visible";
+        back.onclick = () => { state.stage = 1; substep = 3; saveStateToScorm(); render(); };
+
+        document.getElementById("reset-stage").onclick = () => { state.ratings = {}; renderStage2(); };
+
+        const next = document.getElementById("next-btn");
+        next.textContent = "Seuraava";
+        const updateFooter2 = (total) => {
+          const rated = Object.keys(state.ratings).filter(k => typeof state.ratings[k] === "number" && all.flatMap(g => g.items).includes(k)).length;
+          info.textContent = `Arvioimatta: ${Math.max(0, total - rated)} / ${total}`;
+          const ok = rated === total && total > 0;
+          enableNext(ok);
+          next.onclick = () => {
+            if (!ok) { document.getElementById("error-note").style.display = "block"; return; }
+            state.stage = 3; saveStateToScorm(); render();
+          };
+        };
+        updateFooter2(totalToRate);
+      };
+
+      // ---------- Stage 3: Select top 5 ----------
+      const renderStage3 = () => {
+        const c = document.getElementById("stage-container");
+        c.innerHTML = "";
+
+        const groups = [{ g: "Henkilökohtaiset vahvuudet", items: state.selected.vahvuudet },
+                        { g: "Kovat taidot", items: state.selected.kovat },
+                        { g: "Pehmeät taidot", items: state.selected.pehmeat }];
+        const allSkills = [];
+        groups.forEach(gr => gr.items.forEach(s => { if (!allSkills.includes(s)) allSkills.push(s); }));
+        allSkills.sort((a, b) => {
+          const ra = state.ratings[a] ?? 0;
+          const rb = state.ratings[b] ?? 0;
+          if (rb !== ra) return rb - ra;
+          const gi = (s) => groups.findIndex(gr => gr.items.includes(s));
+          return gi(a) - gi(b);
+        });
+
+        const container = el("div");
+        container.appendChild(sectionTitle("Valitse 5 tärkeintä taitoa", "Alla ovat aiemmin valitsemasi taidot sekä niille antamasi arviot (1–5). Valitse 5 tärkeintä."));
+        const grid = gridWrap();
+
+        allSkills.forEach(skill => {
+          const isSel = state.top5.includes(skill);
+          const badge = el("span", { style: { marginLeft: "8px", fontSize: "12px", padding: "2px 6px", background: "#e5e7eb", borderRadius: "9999px", color: "#111827", fontWeight: "700" } }, `${state.ratings[skill] ?? 0}/5`);
+          const chip = btnChip(skill, isSel, () => {
+            const i = state.top5.indexOf(skill);
+            if (i >= 0) { state.top5.splice(i, 1); }
+            else { if (state.top5.length === 5) return; state.top5.push(skill); }
+            renderStage3();
+          });
+          chip.appendChild(badge);
+          grid.appendChild(chip);
+        });
+
+        container.appendChild(grid);
+        container.appendChild(counterNote(`Valitse vielä ${Math.max(0, 5 - state.top5.length)}`));
+        container.appendChild(note("Valitse tasan 5 taitoa ennen siirtymistä."));
+        c.appendChild(container);
+
+        const back = document.getElementById("back-btn");
+        back.onclick = () => { state.stage = 2; saveStateToScorm(); render(); };
+        document.getElementById("reset-stage").onclick = () => { state.top5 = []; renderStage3(); };
+        const next = document.getElementById("next-btn");
+        next.textContent = "Seuraava";
+        const ok = state.top5.length === 5;
+        enableNext(ok);
+        next.onclick = () => {
+          if (!ok) { document.getElementById("error-note").style.display = "block"; return; }
+          state.stage = 4; saveStateToScorm(); render();
+        };
+      };
+
+      // ---------- Stage 4: Details for top5 ----------
+      const detailsHelper = [
+        "Missä tilanteissa tai ympäristöissä olet käyttänyt tätä taitoa?", "Missä olet oppinut tämän taidon?", "Miten tämä taito on auttanut sinua saavuttamaan tavoitteita tai ratkaisemaan ongelmia?", "Miten muut ovat arvioineet tai kommentoineet tätä taitoa sinussa?", "Miten reagoisit, jos tämä taito ei toimisi toivotulla tavalla?", "Miten haluaisit kehittää tätä taitoa tulevaisuudessa?", "Miten tämä taito liittyy muihin taitoihisi? Täydentävätkö ne toisiaan?", "Mikä tekee tästä taidosta erityisen sinulle?", "Miten tämä taito näkyy eri elämänalueilla?"
+      ];
+
+      const renderStage4 = () => {
+        const c = document.getElementById("stage-container");
+        c.innerHTML = "";
+        const container = el("div");
+        container.appendChild(sectionTitle("Lisätietoja taidoista", "Kirjoita jokaisesta valitsemastasi taidosta tarkennuksia. Voit käyttää apunasi alla olevia kysymyksiä. (Ei minimipituutta.)"));
+        const helper = el("details", { style: { margin: "6px 0 12px 0" } }, [
+          el("summary", { style: { cursor: "pointer", fontWeight: "700" } }, "Apu-kysymykset (avaa/sulje)"),
+          el("ol", { style: { marginTop: "8px" } }, detailsHelper.map(q => el("li", { style: { margin: "6px 0" } }, q)))
+        ]);
+        container.appendChild(helper);
+        state.top5.forEach(skill => {
+          const block = el("div", { style: { border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px", margin: "12px 0" } });
+          block.appendChild(el("div", { style: { fontWeight: "700", marginBottom: "8px" } }, skill));
+          const ta = el("textarea", { rows: "5", placeholder: "Kirjoita tähän tarkennuksia...", style: { width: "100%", padding: "10px", border: "1px solid #e5e7eb", borderRadius: "8px", resize: "vertical" } });
+          ta.value = state.details[skill] || "";
+          ta.oninput = () => { state.details[skill] = ta.value; };
+          block.appendChild(ta);
+          container.appendChild(block);
+        });
+        c.appendChild(container);
+        const back = document.getElementById("back-btn");
+        back.onclick = () => { state.stage = 3; saveStateToScorm(); render(); };
+        document.getElementById("reset-stage").onclick = () => { state.details = {}; renderStage4(); };
+        const next = document.getElementById("next-btn");
+        next.textContent = "Seuraava";
+        enableNext(true);
+        next.onclick = () => { state.stage = 5; saveStateToScorm(); render(); };
+      };
+
+      // ---------- Stage 5: Open Questions ----------
+      const renderStage5 = () => {
+        const c = document.getElementById("stage-container");
+        c.innerHTML = "";
+        const container = el("div");
+        container.appendChild(sectionTitle("Avoimet kysymykset", "Vastaathan vielä alla oleviin kysymyksiin. (Ei minimipituutta.)"));
+        const helper = el("details", { style: { margin: "6px 0 12px 0" } }, [
+          el("summary", { style: { cursor: "pointer", fontWeight: "700" } }, "Apu-kysymykset (avaa/sulje)"),
+          el("ol", { style: { marginTop: "8px" } }, detailsHelper.map(q => el("li", { style: { margin: "6px 0" } }, q)))
+        ]);
+        container.appendChild(helper);
+        const Qs = [
+          { k: "q1", t: "1. Onko jokin näistä taidoista sellainen, jonka hallitset hyvin, mutta et halua sitä jatkossa hyödyntää?" },
+          { k: "q2", t: "2. Onko jokin näistä taidoista sellainen, jota haluat jatkossa käyttää ja edelleen kehittää sitä?" },
+          { k: "q3", t: "3. Oletko tyytyväinen olemassa olevaan osaamiseesi? Miksi olet tai miksi et ole? Perustele!" },
+          { k: "q4", t: "4. Koetko, että voit päästä eteenpäin olemassa olevalla osaamisellasi? Perustele miksi ja jos koet, että tarvitset jotain muuta osaamista, pohdi, mitä se voisi olla." }
+        ];
+        Qs.forEach(({ k, t }) => {
+          const block = el("div", { style: { border: "1px solid #e5e7eb", borderRadius: "10px", padding: "12px", margin: "12px 0" } });
+          block.appendChild(el("div", { style: { fontWeight: "700", marginBottom: "8px" } }, t));
+          const ta = el("textarea", { rows: "5", placeholder: "Kirjoita vastauksesi tähän...", style: { width: "100%", padding: "10px", border: "1px solid #e5e7eb", borderRadius: "8px", resize: "vertical" } });
+          ta.value = state.openQs[k] || "";
+          ta.oninput = () => { state.openQs[k] = ta.value; };
+          block.appendChild(ta);
+          container.appendChild(block);
+        });
+        c.appendChild(container);
+        const back = document.getElementById("back-btn");
+        back.onclick = () => { state.stage = 4; saveStateToScorm(); render(); };
+        document.getElementById("reset-stage").onclick = () => { state.openQs = { q1: "", q2: "", q3: "", q4: "" }; renderStage5(); };
+        const next = document.getElementById("next-btn");
+        next.textContent = "Seuraava";
+        enableNext(true);
+        next.onclick = () => { state.stage = 6; saveStateToScorm(); render(); };
+      };
+
+      // ---------- Stage 6: Summary & Finish ----------
+      const renderStage6 = () => {
+        const c = document.getElementById("stage-container");
+        c.innerHTML = "";
+        const container = el("div");
+
+        // --- INSTRUCTIONS ---
+        container.appendChild(sectionTitle("Melkein valmis! Ohjeet palautukseen", "Tämä työkalu on nyt suoritettu. Viimeistele tehtävä seuraamalla alla olevia ohjeita."));
+        
+        const instructions = el("ol", { style: { listStyle: "decimal", paddingLeft: "20px", margin: "20px 0", border: "1px solid #d1d5db", borderRadius: "8px", background: "#f9fafb" }}, [
+            el("li", {style: {margin: "12px", padding: "8px", borderRadius: "6px", background:"#fff"}}, [
+                el("strong", {}, "Kopioi yhteenvetosi. "),
+                "Alla on kooste vastauksistasi. Paina 'Kopioi leikepöydälle' -nappia kopioidaksesi koko tekstin."
+            ]),
+            el("li", {style: {margin: "12px", padding: "8px", borderRadius: "6px", background:"#fff"}}, [
+                el("strong", {}, "Siirry tehtävän palautukseen. "),
+                "Kun olet kopioinut tekstin, paina vihreää 'Siirry Tehtävän Palautukseen' -nappia. Sinut ohjataan Moodle-tehtävään."
+            ]),
+            el("li", {style: {margin: "12px", padding: "8px", borderRadius: "6px", background:"#fff"}}, [
+                el("strong", {}, "Liitä ja palauta. "),
+                "Liitä kopioimasi teksti tehtävän palautuskenttään ja tallenna muutokset."
+            ])
+        ]);
+        container.appendChild(instructions);
+
+        // --- SUMMARY TEXT ---
+        let summaryText = "Tärkeimmät 5 taitoa\n";
+        (state.top5 || []).forEach(s => { summaryText += `- ${s} · ${state.ratings[s] || "-"} / 5\n  ${(state.details[s] || "—").trim()}\n`; });
+        summaryText += "\nKaikki valitut taidot ja arvosanat\n";
+        [{ label: "Henkilökohtaiset vahvuudet", items: state.selected.vahvuudet || [] }, { label: "Kovat taidot", items: state.selected.kovat || [] }, { label: "Pehmeät taidot", items: state.selected.pehmeat || [] }].forEach(g => { summaryText += `${g.label}\n`; g.items.forEach(s => summaryText += `- ${s} · ${state.ratings[s] || "-"} / 5\n`); });
+        summaryText += "\nAvoimet vastaukset\n";
+        summaryText += `1) ${state.openQs?.q1 || "—"}\n2) ${state.openQs?.q2 || "—"}\n3) ${state.openQs?.q3 || "—"}\n4) ${state.openQs?.q4 || "—"}\n`;
+
+        const summaryBox = el("div", { style: { marginTop: "8px", padding: "14px", border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: "10px", whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: "14px" } }, summaryText);
+        container.appendChild(summaryBox);
+
+        const copyBtn = el("button", { type: "button", style: { marginTop: "10px", padding: "10px 14px", border: "1px solid #d1d5db", background: "#ffffff", color: "#1f2937", borderRadius: "8px", fontWeight: "700", cursor: "pointer" }, onclick: () => {
+            navigator.clipboard.writeText(summaryText).then(() => {
+                copyBtn.textContent = "✔ Kopioitu!";
+                setTimeout(() => copyBtn.textContent = "Kopioi leikepöydälle", 2000);
+            });
+        }}, "Kopioi leikepöydälle");
+        container.appendChild(copyBtn);
+        
+        // --- NEW CODE STARTS HERE ---
+        const instructionsForAssignment = "Kun olet kopioinut yhteenvedon, paina Jatka Palautukseen nappia.";
+        const instructionText = el("p", {
+          style: {
+            marginTop: "12px",
+            padding: "10px",
+            background: "#f3f4f6",
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            textAlign: "center",
+            fontWeight: "600",
+            color: "#374151"
+          }
+        }, instructionsForAssignment);
+        container.appendChild(instructionText);
+        // --- NEW CODE ENDS HERE ---
+
+        c.appendChild(container);
+
+        // --- NAVIGATION BUTTONS ---
+        const back = document.getElementById("back-btn");
+        back.onclick = () => { state.stage = 5; render(); };
+        
+        document.getElementById("reset-stage").style.display = "none";
+        document.getElementById("back-btn").style.display = "none";
+
+        const next = document.getElementById("next-btn");
+        next.textContent = "Jatka Palautukseen"; // Changed text for clarity
+        enableNext(true);
+        next.style.setProperty("background-color", "#28a745", "important"); // Green color
+        next.onclick = () => {
+            reportToScorm({ scoreRaw: 100, status: "completed" });
+            Scorm.set("cmi.suspend_data", "");
+            Scorm.commit();
+            window.location.href = "https://katjanoponen.moodlecloud.com/mod/assign/view.php?id=67&action=editsubmission";
+        };
+      };
+
+      // ---------- Mount ----------
+      Scorm.init();
+      const suspendData = Scorm.get("cmi.suspend_data");
+      if (suspendData && suspendData !== "") {
+        try {
+          const loadedState = JSON.parse(suspendData);
+          Object.assign(state, loadedState);
+        } catch (e) {
+          console.error("Could not parse suspend_data", e);
+        }
+      }
+      window.onunload = () => { saveStateToScorm(); Scorm.finish(); };
+      render();
+
+    } catch (e) {
+      const container = document.getElementById("skills-wizard");
+      if (container) {
+        container.innerHTML = `
+          <div style="padding: 20px; border: 2px solid red; background: #ffebee; color: #c62828;">
+            <h2>Application Error</h2>
+            <p>An unexpected error occurred and the exercise could not be loaded. Please check the browser console for details.</p>
+            <pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 12px;">${e.stack}</pre>
+          </div>
+        `;
+      }
+      console.error("Skills wizard failed to load:", e);
+    }
+    })();
+  </script>
+</p>
+

@@ -1,0 +1,113 @@
+# Minimal Plan — LTI 1.3 Tool for Moodle (Next.js + Firebase)
+
+## 1) Architecture
+
+- **Frontend:** Next.js app; task UIs are React components selected via Deep Linking.
+    
+- **Backend (API routes):** Handles LTI 1.3 OIDC login/initiation, state/nonce, id_token validation, role parsing, and Moodle Web API calls.
+    
+- **Storage:** Firebase (Firestore or RTDB) keyed by `user_id`.
+    
+- **Moodle usage:** Only for **authentication + launch**; no AGS/grade return.
+    
+
+## 2) Data Model (Firebase)
+
+`{user_id}: {   task1: { output, updatedAt },   task2: { output, updatedAt },   ... }`
+
+- Optional collection for **task metadata** (taskId → title, config) to render Deep Link menu.
+    
+
+## 3) Flows
+
+### A) Deep Link (Instructor creates link to tool)
+
+1. Instructor chooses “External tool” → LTI Deep Link flow.
+    
+2. Tool displays **task picker** (React menu).
+    
+3. On selection, tool returns Deep Link response with chosen `taskId` as custom parameter.
+    
+4. Moodle stores the launch link with `taskId` for future student/instructor launches.
+    
+
+### B) Student Launch (from course)
+
+1. Moodle → LTI 1.3 OIDC login → tool validates `id_token`.
+    
+2. Parse `sub` (user_id), `roles`, `context` (course), `resource_link`, and custom `taskId`.
+    
+3. Load **Task UI** for `taskId`.
+    
+4. On submit/auto-save, write to Firebase under `{user_id}.{taskId}`.
+    
+
+### C) Instructor Launch (from same link)
+
+1. Moodle → OIDC → tool validates `id_token`, detects instructor role.
+    
+2. Use Moodle Web API to fetch **participant user IDs** for the same course/group.
+    
+3. Read Firebase `{user_id}.{taskId}` for those IDs.
+    
+4. Render **responses dashboard** (read-only or with minimal filters).
+    
+
+## 4) Permissions & Mapping
+
+- **User identity:** Prefer stable `sub` from LTI token; if needed, map to Moodle `user.id` for Web API.
+    
+- **Scope:** Only fetch outputs for users in the same **course/group** as provided by Moodle context.
+    
+- **No grades:** AGS disabled entirely to avoid prior issues.
+    
+
+## 5) Environment & Config
+
+- **Per-deployment settings:** Issuer, Client ID(s), JWKS URL, Auth endpoints, Tool redirect URIs.
+    
+- **Custom params:** `taskId` added via Deep Link result and present on launch.
+    
+- **Secrets:** Stored as environment variables.
+    
+
+## 6) Dev/Test Mode (fast iteration)
+
+- `npm run dev`:
+    
+    - Bypass real OIDC: inject a **mock `id_token` payload** (user_id, roles, context, taskId).
+        
+    - Disable Moodle Web API calls: return a fixed list of demo student IDs.
+        
+    - Clearly mark UI as **TEST MODE**.
+        
+
+## 7) Minimal API Surface
+
+- `GET /lti/login` — OIDC Initiation (build auth request).
+    
+- `POST /lti/launch` — Validate `id_token`, set session, route to student or instructor UI.
+    
+- `POST /deep-link` — Present task picker; return Deep Link content item with `taskId`.
+    
+- `GET /api/responses?taskId=...` — Instructor-only: fetch participant IDs (Moodle API) + Firebase reads.
+    
+- `POST /api/save` — Student: save `{taskId, output}` to Firebase.
+    
+
+## 8) UI Skeleton
+
+- **Task Picker (Deep Link):** Simple list/grid of tasks.
+    
+- **Task Runner (Student):** Loads React task by `taskId`, save on change.
+    
+- **Responses Dashboard (Instructor):** Table: Student → last updated → preview/download of `output`.
+    
+
+## 9) Assumptions / Constraints
+
+- Moodle roles use standard LTI role URNs (detect Instructor vs Learner).
+    
+- One task per launch link (chosen during Deep Link).
+    
+- We **do not** post grades or statuses back to Moodle (no AGS).
