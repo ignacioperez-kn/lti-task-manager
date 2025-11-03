@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Työnpaluun pysyvyydentunteen arviointi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #customAlert {
+            transition: transform 0.3s ease-in-out;
+        }
+        .unanswered {
+            background-color: #fee2e2;
+            border: 1px solid #fca5a5;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            transition: background-color 0.3s ease;
+        }
+        .selected-label {
+            background-color: #e0f2fe; /* Light blue background */
+            font-weight: 500;
+        }
+        /* Print-specific styles */
+        @media print {
+            body {
+                font-size: 12pt;
+            }
+            header, form, #printButton, .bg-blue-600 {
+                display: none !important;
+            }
+            #resultsSection, #resultsSection * {
+                display: block !important;
+                visibility: visible !important;
+            }
+            .container {
+                max-width: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .shadow-sm, .shadow-md, .shadow-lg {
+                box-shadow: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Custom Alert Message -->
+    <div id="customAlert" class="hidden fixed top-5 left-1/2 -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg z-50" role="alert">
+        <strong class="font-bold">Huomio!</strong>
+        <span class="block sm:inline" id="customAlertMessage"></span>
+        <span class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="hideAlert()">
+            <svg class="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Sulje</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+        </span>
+    </div>
+
+    <!-- SCORM API Wrapper - Do not modify -->
+    <script>
+        var pipwerks = {};
+        pipwerks.SCORM = { version: "1.2", handleCompletionStatus: true, handleExitMode: true, API: { handle: null, find: function(win) { if (win.API) return win.API; if (win.parent && win.parent != win) return pipwerks.SCORM.API.find(win.parent); return null; }, get: function() { var api = pipwerks.SCORM.API.find(window); if (!api) { console.error("SCORM API not found."); return null; } pipwerks.SCORM.API.handle = api; return api; } }, connection: { isActive: false, init: function() { var api = pipwerks.SCORM.API.get(); if (api) { switch (pipwerks.SCORM.version) { case "2004": pipwerks.SCORM.connection.isActive = (api.Initialize("") === "true"); break; case "1.2": pipwerks.SCORM.connection.isActive = (api.LMSInitialize("") === "true"); break; } } return pipwerks.SCORM.connection.isActive; }, terminate: function() { if (pipwerks.SCORM.connection.isActive) { var api = pipwerks.SCORM.API.get(); if (api) { if (pipwerks.SCORM.handleCompletionStatus) { var completionStatus = pipwerks.SCORM.data.get("cmi.core.lesson_status"); if (completionStatus === "not attempted") { pipwerks.SCORM.data.set("cmi.core.lesson_status", "incomplete"); } } switch (pipwerks.SCORM.version) { case "2004": pipwerks.SCORM.connection.isActive = !(api.Terminate("") === "true"); break; case "1.2": pipwerks.SCORM.connection.isActive = !(api.LMSFinish("") === "true"); break; } } } } }, data: { get: function(param) { var api = pipwerks.SCORM.API.get(); if (api && pipwerks.SCORM.connection.isActive) { switch (pipwerks.SCORM.version) { case "2004": return api.GetValue(param); case "1.2": return api.LMSGetValue(param); } } return null; }, set: function(param, value) { var api = pipwerks.SCORM.API.get(); if (api && pipwerks.SCORM.connection.isActive) { switch (pipwerks.SCORM.version) { case "2004": return api.SetValue(param, value); case "1.2": return api.LMSSetValue(param, value); } } return null; }, save: function(){ var api = pipwerks.SCORM.API.get(); if (api && pipwerks.SCORM.connection.isActive) { switch (pipwerks.SCORM.version) { case "2004": return api.Commit(""); case "1.2": return api.LMSCommit(""); } } return null; } }, init: function() { return pipwerks.SCORM.connection.init(); }, set: function(param, value) { return pipwerks.SCORM.data.set(param, value); }, get: function(param) { return pipwerks.SCORM.data.get(param); }, save: function() { return pipwerks.SCORM.data.save(); }, quit: function() { pipwerks.SCORM.connection.terminate(); } };
+        var scorm = pipwerks.SCORM;
+    </script>
+    
+    <div class="container mx-auto p-4 sm:p-6 md:p-8 max-w-4xl">
+        <header class="bg-white p-6 rounded-xl shadow-sm mb-8">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Työnpaluun pysyvyydentunteen arviointi</h1>
+            <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p class="text-gray-700">Vastaa seuraaviin väittämiin asteikolla 0–6. Vastauksesi auttavat sinua pohtimaan omia voimavarojasi ja haasteitasi työhönpaluuseen liittyen.</p>
+                <p class="text-sm text-gray-600 mt-2">Voit halutessasi jättää kesken ja jatkaa myöhemmin, sillä vastauksesi tallentuvat automaattisesti.</p>
+            </div>
+        </header>
+
+        <form id="assessmentForm" class="space-y-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm">
+                 <h2 class="text-xl font-semibold text-gray-800 mb-3">Vastausasteikko</h2>
+                 <p class="text-gray-600"><span class="font-semibold text-gray-900">0</span> = täysin eri mieltä</p>
+                 <p class="text-gray-600"><span class="font-semibold text-gray-900">6</span> = täysin samaa mieltä</p>
+            </div>
+
+            <div id="questionsContainer" class="bg-white p-6 rounded-xl shadow-sm space-y-8">
+                <!-- Questions will be dynamically inserted here -->
+            </div>
+            
+            <div class="text-center mt-8">
+                <button type="submit" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 shadow-md hover:shadow-lg text-lg">
+                    Tallenna vastaukset
+                </button>
+            </div>
+        </form>
+
+        <div id="resultsSection" class="hidden mt-12">
+            <div id="completionMessage" class="bg-white p-8 rounded-xl shadow-lg text-center">
+                 <!-- Completion message will go here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('assessmentForm');
+        
+        // --- SCORM INTEGRATION & STATE MANAGEMENT ---
+        window.onload = function() {
+            scorm.init();
+            loadState(); // Try to load previous answers
+            var lessonStatus = scorm.get("cmi.core.lesson_status");
+            if (lessonStatus === "not attempted") {
+                scorm.set("cmi.core.lesson_status", "incomplete");
+                scorm.save();
+            }
+        };
+
+        window.onunload = window.onbeforeunload = function() {
+            scorm.quit();
+        };
+
+        function completeSCO(rawScore) {
+            scorm.set("cmi.core.lesson_status", "completed");
+            scorm.set("cmi.core.score.min", "0");
+            // Set the max score to 6, as this is the max possible average
+            scorm.set("cmi.core.score.max", "6"); 
+            // Send the raw average score (e.g., 4.5) to the LMS
+            scorm.set("cmi.core.score.raw", rawScore.toString());
+            scorm.save();
+        }
+
+        function saveState() {
+            const data = {};
+            const formData = new FormData(form);
+            for (let [key, value] of formData.entries()) {
+                data[key] = value;
+            }
+            scorm.set('cmi.suspend_data', JSON.stringify(data));
+            scorm.save();
+        }
+
+        function loadState() {
+            const dataString = scorm.get('cmi.suspend_data');
+            if (dataString && dataString !== "") {
+                const data = JSON.parse(dataString);
+                for (const key in data) {
+                    if (data.hasOwnProperty(key)) {
+                        const radios = document.querySelectorAll(`input[name="${key}"]`);
+                        if(radios.length > 0){
+                            radios.forEach(radio => {
+                                const label = radio.closest('label');
+                                if (radio.value === data[key]) {
+                                    radio.checked = true;
+                                    label.classList.add('selected-label', 'border-blue-500');
+                                    label.classList.remove('border-gray-200');
+                                } else {
+                                    label.classList.remove('selected-label', 'border-blue-500');
+                                    label.classList.add('border-gray-200');
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        function showAlert(message) {
+            document.getElementById('customAlertMessage').textContent = " " + message;
+            document.getElementById('customAlert').classList.remove('hidden');
+        }
+
+        function hideAlert() {
+            document.getElementById('customAlert').classList.add('hidden');
+        }
+
+        const questions = [
+            'Selviydyn vastoinkäymisistä',
+            'En suoriudu tehtävistäni tunteitteni ja/tai mielialahaasteiden vuoksi',
+            'Pystyn asettamaan omat rajat työssä',
+            'Pystyn suoriutumaan tehtävistäni',
+            'Selviydyn tunteiden kannalta vaativista tilanteista',
+            'Minulla ei jää voimavaroja mihinkään muuhun kuin työpäivästä selviämiseen',
+            'Pystyn keskittymään riittävästi työhöni',
+            'Tulen kestämään työpaineita',
+            'En pysty ratkaisemaan mahdollisia ongelmia työssäni',
+            'Saan motivoitua itseäni riittävästi tehdakseni työni',
+            'Selviydyn työn fyysisistä vaatimuksista'
+        ];
+        // Indexes of negatively phrased questions (0-based)
+        const negativeQuestionIndexes = [1, 5, 8];
+
+        const questionsContainer = document.getElementById('questionsContainer');
+        let questionsHtml = '';
+        questions.forEach((q, index) => {
+            const questionId = `q-${index}`;
+            questionsHtml += `
+                <div class="question-container border-t border-gray-200 pt-6 first:border-t-0 first:pt-0">
+                    <p class="text-md text-gray-800 mb-3 font-medium">${index + 1}. ${q}</p>
+                    <fieldset class="flex flex-wrap gap-x-2 gap-y-2 justify-center sm:justify-start">
+                        <legend class="sr-only">Arvio asteikolla 0-6</legend>
+                        ${[0, 1, 2, 3, 4, 5, 6].map(val => `
+                            <label for="${questionId}-${val}" class="flex items-center justify-center w-10 h-10 cursor-pointer p-2 rounded-md hover:bg-gray-100 border-2 border-gray-200">
+                                <input type="radio" id="${questionId}-${val}" name="${questionId}" value="${val}" class="sr-only">
+                                <span class="text-lg">${val}</span>
+                             </label>
+                        `).join('')}
+                    </fieldset>
+                </div>
+            `;
+        });
+        questionsContainer.innerHTML = questionsHtml;
+        
+        // Add listeners to all inputs for saving state and visual feedback
+        form.addEventListener('change', (event) => {
+            if (event.target.type === 'radio') {
+                const name = event.target.name;
+                document.querySelectorAll(`input[name="${name}"]`).forEach(radio => {
+                    radio.closest('label').classList.remove('selected-label', 'border-blue-500');
+                    radio.closest('label').classList.add('border-gray-200');
+                });
+                event.target.closest('label').classList.add('selected-label', 'border-blue-500');
+                event.target.closest('label').classList.remove('border-gray-200');
+
+                event.target.closest('.question-container').classList.remove('unanswered');
+            }
+            saveState();
+        });
+
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+            hideAlert();
+            document.querySelectorAll('.unanswered').forEach(el => el.classList.remove('unanswered'));
+
+            let unansweredElements = [];
+            const answers = [];
+            
+            questions.forEach((q, index) => {
+                const questionId = `q-${index}`;
+                const selected = document.querySelector(`input[name="${questionId}"]:checked`);
+                if (selected) {
+                    answers[index] = parseInt(selected.value);
+                } else {
+                    const fieldset = document.querySelector(`input[name="${questionId}"]`).closest('fieldset');
+                    unansweredElements.push(fieldset.parentElement);
+                }
+            });
+
+            if (unansweredElements.length > 0) {
+                showAlert('Vastaathan kaikkiin korostettuihin kysymyksiin.');
+                unansweredElements.forEach(el => el.classList.add('unanswered'));
+                unansweredElements[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+
+            let correctedTotalScore = 0;
+            
+            answers.forEach((answer, index) => {
+                let score = answer;
+                if (negativeQuestionIndexes.includes(index)) {
+                    score = 6 - answer; // Reverse score
+                }
+                correctedTotalScore += score;
+            });
+
+            // Calculate the average score (will be between 0 and 6)
+            const averageScore = correctedTotalScore / questions.length;
+
+            displayResults();
+            document.getElementById('resultsSection').classList.remove('hidden');
+            window.scrollTo({ top: document.getElementById('resultsSection').offsetTop - 20, behavior: 'smooth' });
+            
+            completeSCO(averageScore.toFixed(2)); // Sending average with 2 decimal places
+        });
+
+        function displayResults() {
+            const completionMessageEl = document.getElementById('completionMessage');
+            
+            completionMessageEl.innerHTML = `
+                <svg class="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h2 class="mt-4 text-2xl sm:text-3xl font-bold text-gray-800">Kiitos vastauksistasi!</h2>
+                <p class="mt-2 text-lg text-gray-600">Vastauksesi on tallennettu onnistuneesti ja suoritus on merkitty valmiiksi.</p>
+            `;
+        }
+    </script>
+</body>
+</html>
+

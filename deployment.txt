@@ -1,0 +1,239 @@
+# Secure LTI Tool Deployment Guide for Google Cloud
+
+This guide provides a step-by-step process to set up a secure, automated deployment scheme for an LTI (Learning Tools Interoperability) application on Google Cloud, mirroring the setup of the `lti-task-manager` project.
+
+This scheme uses Google Cloud Build for automated Docker image creation and Google Cloud Run for scalable, serverless hosting. It emphasizes security by managing all secrets and sensitive information through Google Secret Manager.
+
+## Prerequisites
+
+1.  **Google Cloud Project**: A Google Cloud project with billing enabled.
+2.  **gcloud CLI**: The Google Cloud SDK (`gcloud`) installed and authenticated on your local machine. You can install it from [here](https://cloud.google.com/sdk/docs/install).
+3.  **Permissions**: Your Google Cloud user account needs the `Editor` and `Secret Manager Admin` roles for the project.
+4.  **PowerShell**: You need a PowerShell terminal to run the deployment script.
+
+---
+
+## Step 1: Store Your Secrets in Secret Manager
+
+Hardcoding secrets (like API keys, client IDs, or private keys) into your code or deployment scripts is a major security risk. The first step is to create each secret in Google Secret Manager.
+
+Open your terminal and run the following commands. Replace `<your-secret-value-here>` with the actual value for each secret.
+
+**Note**: The secret names (e.g., `lti-tool-private-key`) are the names you will use in the deployment script. It's recommended to keep them consistent.
+
+```bash
+# LTI Tool Secrets
+gcloud secrets create lti-tool-private-key --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add lti-tool-private-key --data-file=-
+
+gcloud secrets create lti-session-secret --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add lti-session-secret --data-file=-
+
+gcloud secrets create lti-platform-client-id --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add lti-platform-client-id --data-file=-
+
+gcloud secrets create lti-public-key --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add lti-public-key --data-file=-
+
+# Firebase Secrets
+gcloud secrets create firebase-api-key --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add firebase-api-key --data-file=-
+
+gcloud secrets create firebase-auth-domain --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add firebase-auth-domain --data-file=-
+
+gcloud secrets create firebase-project-id --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add firebase-project-id --data-file=-
+
+gcloud secrets create firebase-storage-bucket --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add firebase-storage-bucket --data-file=-
+
+gcloud secrets create firebase-messaging-sender-id --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add firebase-messaging-sender-id --data-file=-
+
+gcloud secrets create firebase-app-id --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add firebase-app-id --data-file=-
+
+# Moodle API Token
+gcloud secrets create moodle-task-token --replication-policy="automatic"
+echo "<your-secret-value-here>" | gcloud secrets versions add moodle-task-token --data-file=-
+```
+
+---
+
+## Step 2: Create a `Dockerfile` for Your Application
+
+A `Dockerfile` contains the instructions to package your application into a container image. The following is a clean, multi-stage `Dockerfile` for a typical Next.js application. It ensures that the final image is small and contains only what's needed to run the application.
+
+Create a file named `Dockerfile` in the root of your project with the following content:
+
+```dockerfile
+# Dockerfile
+
+# Stage 1: Install dependencies
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Stage 2: Build the application
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Set build-time environment variables if needed
+# ENV NEXT_PUBLIC_SOME_VAR="some-value"
+ENV NODE_ENV=production
+
+RUN npm run build
+
+# Stage 3: Production image
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy only the necessary artifacts from the builder stage
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+# Expose the port Next.js runs on (default is 3000)
+EXPOSE 3000
+
+# Start the app
+CMD ["npm", "start"]
+```
+
+---
+
+## Step 3: Create the `cloudbuild.yaml` Build Configuration
+
+This file tells Google Cloud Build how to execute the build. It's very simple: it just tells Cloud Build to use Docker to build the image from your `Dockerfile`.
+
+Create a file named `cloudbuild.yaml` in the root of your project:
+
+```yaml
+# cloudbuild.yaml
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    docker build --no-cache -t gcr.io/$_PROJECT_ID/$_SERVICE_NAME .
+
+# Push the container image to Google Container Registry
+images:
+- 'gcr.io/$_PROJECT_ID/$_SERVICE_NAME'
+```
+
+---
+
+## Step 4: Create the `deploy.ps1` Deployment Script
+
+This PowerShell script automates the entire deployment process. It builds the image using Cloud Build and deploys it to Cloud Run with all the necessary environment variables and secrets.
+
+Create a file named `deploy.ps1` in the root of your project. **You will need to fill in the placeholder values in the "Configuration" section.**
+
+```powershell
+param(
+    [switch]$SkipBuild
+)
+
+# Stop the script immediately if any command fails.
+$ErrorActionPreference = "Stop"
+
+# --- Configuration ---
+# IMPORTANT: Fill in your project-specific details here.
+$PROJECT_ID = "your-gcp-project-id" # <-- REPLACE THIS
+$REGION = "your-gcp-region"       # e.g., us-central1, europe-west1 <-- REPLACE THIS
+$SERVICE_NAME = "your-service-name" # e.g., my-lti-app <-- REPLACE THIS
+
+# --- Image Name (Derived from config) ---
+$IMAGE_NAME = "gcr.io/$PROJECT_ID/$SERVICE_NAME"
+
+# --- Pre-flight Checks ---
+if ($PROJECT_ID -eq "your-gcp-project-id" -or $REGION -eq "your-gcp-region") {
+    Write-Host "ERROR: Please update the PROJECT_ID, REGION, and SERVICE_NAME variables in this script before running." -ForegroundColor Red
+    exit 1
+}
+
+# --- Step 1: Run Cloud Build (Conditional) ---
+if (-not $SkipBuild) {
+    Write-Host "Starting Google Cloud Build..." -ForegroundColor Cyan
+    gcloud builds submit --config cloudbuild.yaml --substitutions="_PROJECT_ID=$PROJECT_ID,_SERVICE_NAME=$SERVICE_NAME"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Google Cloud Build failed. See logs above for details." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Cloud Build successful!" -ForegroundColor Green
+} else {
+    Write-Host "Skipping Cloud Build as -SkipBuild was specified." -ForegroundColor Yellow
+}
+
+# --- Step 2: Deploy to Cloud Run ---
+Write-Host "Deploying to Google Cloud Run..." -ForegroundColor Cyan
+
+# Define non-secret environment variables for your application
+# <-- REPLACE these with your actual environment variables
+$envVars = @(
+    "NODE_ENV=production",
+    "PLATFORM_ISS=https://your-moodle-instance.com",
+    "PLATFORM_AUTHORIZATION_ENDPOINT=https://your-moodle-instance.com/mod/lti/auth.php",
+    "PLATFORM_TOKEN_ENDPOINT=https://your-moodle-instance.com/mod/lti/token.php",
+    "PLATFORM_JWKS_ENDPOINT=https://your-moodle-instance.com/mod/lti/certs.php",
+    "NEXT_PUBLIC_TOOL_HOST=https://your-service-name-random-hash.a.run.app", # You will get this URL after the first deployment
+    "MOODLE_API_URL=https://your-moodle-instance.com/webservice/rest/server.php"
+) -join ","
+
+# Define the secrets to be mounted from Secret Manager
+# The format is "ENV_VAR_NAME=secret-name-in-gcp:version"
+# <-- REPLACE these with the secrets your application needs
+$secrets = @(
+    "TOOL_PRIVATE_KEY=lti-tool-private-key:latest",
+    "SESSION_SECRET=lti-session-secret:latest",
+    "PLATFORM_CLIENT_ID=lti-platform-client-id:latest",
+    "PUBLIC_KEY=lti-public-key:latest",
+    "FIREBASE_API_KEY=firebase-api-key:latest",
+    "FIREBASE_AUTH_DOMAIN=firebase-auth-domain:latest",
+    "FIREBASE_PROJECT_ID=firebase-project-id:latest",
+    "FIREBASE_STORAGE_BUCKET=firebase-storage-bucket:latest",
+    "FIREBASE_MESSAGING_SENDER_ID=firebase-messaging-sender-id:latest",
+    "FIREBASE_APP_ID=firebase-app-id:latest",
+    "MOODLE_API_TOKEN=moodle-task-token:latest"
+) -join ","
+
+gcloud run deploy $SERVICE_NAME `
+    --image $IMAGE_NAME `
+    --region $REGION `
+    --platform managed `
+    --allow-unauthenticated `
+    --set-env-vars "$envVars" `
+    --set-secrets "$secrets"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Google Cloud Run deployment failed." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "------------------------------------------------------------------" -ForegroundColor Green
+Write-Host "SUCCESS! Your service has been deployed." -ForegroundColor Green
+Write-Host "------------------------------------------------------------------"
+```
+
+---
+
+## Step 5: How to Deploy
+
+1.  **Fill in Placeholders**: Open `deploy.ps1` and replace all the placeholder values (like `your-gcp-project-id`, `your-service-name`, and the environment variables) with your project's specific configuration.
+2.  **Run the Script**: Open a PowerShell terminal, navigate to your project's root directory, and run the script:
+    ```powershell
+    ./deploy.ps1
+    ```
+3.  **First Deployment Note**: After you run the deployment for the first time, Google Cloud Run will generate a public URL for your service. You must take this URL and update the `NEXT_PUBLIC_TOOL_HOST` environment variable in your `deploy.ps1` script for future deployments.
+4.  **Skipping the Build**: If you have only changed environment variables or secrets in the `deploy.ps1` script and haven't changed the application code, you can speed up the deployment by skipping the build step:
+    ```powershell
+    ./deploy.ps1 -SkipBuild
+    ```

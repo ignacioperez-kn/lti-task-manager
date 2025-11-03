@@ -4,74 +4,22 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 
-// --- Helper component to display task output ---
-const TaskOutputDisplay: React.FC<{ output: any }> = ({ output }) => {
-  if (!output) return <p>Ei tuloksia saatavilla.</p>;
-
-  const { selected, top5, details, openQs, ratings } = output;
-
-  return (
-    <div className="space-y-4 text-gray-700 text-left">
-      {top5?.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-xl mb-2">Top 5 Osaamista</h3>
-          <ul className="list-disc list-inside ml-4 space-y-2">
-            {top5.map((skill: string) => (
-              <li key={skill}>
-                <span className="font-medium">{skill}</span> (Arvio: {ratings?.[skill] || 'N/A'}/5)
-                {details?.[skill] && (
-                  <p className="text-sm text-gray-600 mt-1 ml-4 p-2 bg-gray-50 rounded-md italic">"{details[skill]}"</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {openQs && Object.values(openQs).some(v => v) && (
-        <div>
-          <h3 className="font-semibold text-xl mb-2 mt-4">Avoimet kysymykset</h3>
-          <div className="space-y-2">
-            {openQs.q1 && <p><strong>1. Osaamiset, joita et käytä:</strong> {openQs.q1}</p>}
-            {openQs.q2 && <p><strong>2. Kehitettävät osaamiset:</strong> {openQs.q2}</p>}
-            {openQs.q3 && <p><strong>3. Tyytyväisyys osaamisiin:</strong> {openQs.q3}</p>}
-            {openQs.q4 && <p><strong>4. Voitko edetä:</strong> {openQs.q4}</p>}
-          </div>
-        </div>
-      )}
-
-      {selected && (
-        <details className="mt-4">
-          <summary className="font-semibold text-lg cursor-pointer">Näytä kaikki valitut osaamiset</summary>
-          <div className="space-y-2 mt-2 p-2 border-t">
-            {selected.vahvuudet?.length > 0 && (
-              <div>
-                <p className="font-medium">Henkilökohtaiset vahvuudet:</p>
-                <p className="text-sm text-gray-600">{selected.vahvuudet.join(', ')}</p>
-              </div>
-            )}
-            {selected.kovat?.length > 0 && (
-              <div>
-                <p className="font-medium">Kovat taidot:</p>
-                <p className="text-sm text-gray-600">{selected.kovat.join(', ')}</p>
-              </div>
-            )}
-            {selected.pehmeat?.length > 0 && (
-              <div>
-                <p className="font-medium">Pehmeät taidot:</p>
-                <p className="text-sm text-gray-600">{selected.pehmeat.join(', ')}</p>
-              </div>
-            )}
-          </div>
-        </details>
-      )}
-    </div>
-  );
-};
+interface TaskRendererProps {
+  output: any;
+}
 
 // --- Modal Component ---
-const TaskOutputModal: React.FC<{ response: any; onClose: () => void }> = ({ response, onClose }) => {
+const TaskOutputModal: React.FC<{ response: any; onClose: () => void; taskId: string; }> = ({ response, onClose, taskId }) => {
+
+  const TaskRenderer = dynamic<TaskRendererProps>(() => import(`@/app/dashboard/renderers/${taskId}`).catch(() => () => <p>Error loading renderer.</p>),
+    {
+      loading: () => <p>Ladataan...</p>,
+      ssr: false
+    }
+  );
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -79,7 +27,7 @@ const TaskOutputModal: React.FC<{ response: any; onClose: () => void }> = ({ res
           <h2 className="text-2xl font-bold">Käyttäjän palautus: {response.userName}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
         </div>
-        <TaskOutputDisplay output={response.output} />
+        <TaskRenderer output={response.output} />
         <div className="text-right mt-6">
           <button
             onClick={onClose}
@@ -92,7 +40,6 @@ const TaskOutputModal: React.FC<{ response: any; onClose: () => void }> = ({ res
     </div>
   );
 };
-
 
 export default function DashboardPage() {
   const { taskId } = useParams();
@@ -163,7 +110,7 @@ export default function DashboardPage() {
       </div>
 
       {selectedResponse && (
-        <TaskOutputModal response={selectedResponse} onClose={() => setSelectedResponse(null)} />
+        <TaskOutputModal response={selectedResponse} onClose={() => setSelectedResponse(null)} taskId={taskId as string} />
       )}
     </div>
   );

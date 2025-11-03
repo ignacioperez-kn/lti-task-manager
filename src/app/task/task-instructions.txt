@@ -1,0 +1,128 @@
+
+# How to Create a New Task
+
+This document explains the process of creating and integrating a new task into the LTI Task Manager application.
+
+## 1. Task Architecture Overview
+
+The system is designed to handle both simple and complex tasks. The core idea is to have a dedicated UI for each task and a corresponding renderer for the instructor dashboard.
+
+- **Task UI:** Lives in `src/app/task/[task-name]/page.tsx`.
+- **Instructor Dashboard Renderer:** Lives in `src/app/dashboard/renderers/[task-name].tsx`.
+
+
+## 2. Step-by-Step Guide to Creating a New Task
+
+Let's say you want to create a new task called `my-new-task`.
+
+### Step 1: Create the Task UI
+
+1.  Create a new directory for your task in `src/app/task/`:
+    `src/app/task/my-new-task`
+
+2.  Create a `page.tsx` file inside the new directory:
+    `src/app/task/my-new-task/page.tsx`
+
+3.  Implement your task's UI and logic in this file. This will be a React component.
+
+### Step 2: Implement Security and Session Handling
+
+To prevent direct access to the task page with a stale session, you must implement a check for the `isNewLaunch` flag.
+
+In your `page.tsx`:
+
+```tsx
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession } from '@/lib/hooks';
+
+export default function MyNewTask() {
+  const { session, isLoading: isSessionLoading } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    // If the session is loaded and isNewLaunch is not true, redirect to the main page.
+    if (!isSessionLoading && session && !session.isNewLaunch) {
+      router.push('/');
+    }
+  }, [isSessionLoading, session, router]);
+
+  // Your task logic here...
+}
+```
+
+This is crucial. It ensures that the task can only be accessed after a fresh LTI launch.
+
+### Step 3: Integrate with the Deep-Linking System
+
+For your task to be discoverable by Moodle, you need to add it to the deep-linking endpoint.
+
+1.  Open the deep-linking file:
+    `src/app/api/deep-link/route.ts`
+
+2.  Add a new `case` to the `switch` statement for your task. This will define the title of the task in Moodle's UI.
+
+```ts
+  let taskTitle: string;
+  switch (taskId) {
+    case 'kuvaa-itsesi':
+      taskTitle = 'Kuvaa Itsesi Task';
+      break;
+    case 'Pystyvyyden-itsearviointi-ilmarinen':
+      taskTitle = 'Pystyvyyden Itsearviointi Ilmarinen';
+      break;
+    case 'my-new-task': // <-- ADD THIS
+      taskTitle = 'My New Task';
+      break;
+    default:
+      taskTitle = `Task ${taskId}`;
+  }
+```
+
+### Step 4: Create the Instructor Dashboard Renderer
+
+To allow instructors to see the results of your task, you need to create a renderer component.
+
+1.  Create a new file in `src/app/dashboard/renderers/`:
+    `src/app/dashboard/renderers/my-new-task.tsx`
+
+2.  This component will receive the saved task data as an `output` prop. You need to implement the logic to display this data in a user-friendly way.
+
+```tsx
+import React from 'react';
+
+const MyNewTaskRenderer: React.FC<{ output: any }> = ({ output }) => {
+  if (!output) return <p>No results available.</p>;
+
+  // Assuming your task saves an object like { answer: 'some text' }
+  const { answer } = output;
+
+  return (
+    <div>
+      <h3 className="font-semibold text-xl mb-2">My New Task Results</h3>
+      <p>{answer}</p>
+    </div>
+  );
+};
+
+export default MyNewTaskRenderer;
+```
+
+The main dashboard page (`src/app/dashboard/[taskId]/page.tsx`) will automatically use this renderer when an instructor views the results for `my-new-task`.
+
+## 3. The `isNewLaunch` Flag System Explained
+
+To enhance security and prevent users from accessing tasks with stale session cookies, we use a one-time `isNewLaunch` flag.
+
+1.  **Launch:** When a user launches the LTI tool from Moodle, the `src/app/api/lti/launch/route.ts` handler creates a session and adds `isNewLaunch: true` to it.
+
+2.  **Redirection to Root:** The user is redirected to the main `/` endpoint of the application.
+
+3.  **Root Endpoint (`/`) Validation:** The `src/app/page.tsx` component checks for the `isNewLaunch` flag.
+    - If `true`, it redirects the user to the appropriate task page (`/task/[taskId]`).
+    - Immediately after the redirect, it makes a `POST` request to `/api/session/clear-launch-flag` to set `isNewLaunch` to `false`.
+
+4.  **Task Page Validation:** Each task page also has a check for `isNewLaunch`.
+    - If a user tries to access a task page directly (bypassing the root endpoint), the task page will find `isNewLaunch: false` (or non-existent) and redirect the user back to the root (`/`), where they will be shown an "Invalid session" message.
+
+This flow ensures that only authenticated, fresh LTI launches can access the tasks.

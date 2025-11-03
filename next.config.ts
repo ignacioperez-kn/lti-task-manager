@@ -11,6 +11,22 @@ const nextConfig: NextConfig = {
       ],
     },
   },
+  async redirects() {
+    return [
+      {
+        source: '/task/:path*',
+        has: [
+          {
+            type: 'header',
+            key: 'Referer',
+            value: `^(?!${process.env.NEXT_PUBLIC_TOOL_HOST}|${process.env.PLATFORM_ISS}).*`,
+          },
+        ],
+        destination: '/',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

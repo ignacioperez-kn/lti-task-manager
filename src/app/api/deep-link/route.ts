@@ -11,8 +11,17 @@ export async function POST(req: NextRequest) {
   const id_token = JSON.parse(formData.get('idToken') as string);
   const taskId = formData.get('taskId') as string;
 
-  // Define a title for the task based on taskId
-  const taskTitle = taskId === 'kuvaa-itsesi' ? 'Kuvaa Itsesi Task' : `Task ${taskId}`;
+  let taskTitle: string;
+  switch (taskId) {
+    case 'kuvaa-itsesi':
+      taskTitle = 'Kuvaa Itsesi Task';
+      break;
+    case 'Pystyvyyden-itsearviointi-ilmarinen':
+      taskTitle = 'Pystyvyyden Itsearviointi Ilmarinen';
+      break;
+    default:
+      taskTitle = `Task ${taskId}`;
+  }
 
   const contentItems = [
     {

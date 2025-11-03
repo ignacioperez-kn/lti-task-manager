@@ -143,6 +143,7 @@ export default function KuvaaItsesiTask() {
   const { session, isLoading: isSessionLoading } = useSession();
 
   const [state, setState] = useState<TaskState>(INITIAL_STATE);
+  const [isStageValid, setIsStageValid] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -162,7 +163,7 @@ export default function KuvaaItsesiTask() {
       // console.log('State saved!');
     } catch (error) {
       console.error('Error saving task state:', error);
-      setSaveError('Failed to auto-save progress.');
+      setSaveError('Edistyksen automaattinen tallennus epäonnistui.');
     } finally {
       setIsSaving(false);
     }
@@ -188,7 +189,7 @@ export default function KuvaaItsesiTask() {
         }
       } catch (error) {
         console.error('Error loading task state:', error);
-        setSaveError('Failed to load previous progress.');
+        setSaveError('Aiemman edistyksen lataaminen epäonnistui.');
       } finally {
         setIsLoading(false);
       }
@@ -205,6 +206,15 @@ export default function KuvaaItsesiTask() {
       debouncedSave(state);
     }
   }, [state, isLoading, isSessionLoading, session?.isInstructor, debouncedSave]);
+
+  useEffect(() => {
+    // Reset validation when stage or substep changes
+    if (state.stage === 1 || state.stage === 2 || state.stage === 3) {
+      setIsStageValid(false);
+    } else {
+      setIsStageValid(true);
+    }
+  }, [state.stage, state.substep]);
 
   // --- Handlers for navigation and state updates ---
   const goToNextStage = () => {
@@ -259,23 +269,23 @@ export default function KuvaaItsesiTask() {
   const renderStageContent = () => {
     // This will contain the JSX for each stage
     switch (state.stage) {
-      case 1: return <Stage1 state={state} setState={setState} />; // Will create Stage1 component
-      case 2: return <Stage2 state={state} setState={setState} />; // Will create Stage2 component
-      case 3: return <Stage3 state={state} setState={setState} />; // Will create Stage3 component
-      case 4: return <Stage4 state={state} setState={setState} />; // Will create Stage4 component
-      case 5: return <Stage5 state={state} setState={setState} />; // Will create Stage5 component
-      case 6: return <Stage6 state={state} setState={setState} />; // Will create Stage6 component
-      case 7: return <Stage7 state={state} setState={setState} />; // Will create Stage7 component
-      default: return <Stage1 state={state} setState={setState} />;
+      case 1: return <Stage1 state={state} setState={setState} onValidationChange={setIsStageValid} />;
+      case 2: return <Stage2 state={state} setState={setState} onValidationChange={setIsStageValid} />;
+      case 3: return <Stage3 state={state} setState={setState} onValidationChange={setIsStageValid} />;
+      case 4: return <Stage4 state={state} setState={setState} />;
+      case 5: return <Stage5 state={state} setState={setState} />;
+      case 6: return <Stage6 state={state} setState={setState} />;
+      case 7: return <Stage7 state={state} setState={setState} />;
+      default: return <Stage1 state={state} setState={setState} onValidationChange={setIsStageValid} />;
     }
   };
 
   if (isSessionLoading || isLoading) {
-    return <div className="flex min-h-screen items-center justify-center text-xl">Loading task...</div>;
+    return <div className="flex min-h-screen items-center justify-center text-xl">Ladataan tehtävää...</div>;
   }
 
   if (!session?.sub) {
-    return <div className="flex min-h-screen items-center justify-center text-xl text-red-600">Not authenticated. Please launch via LTI.</div>;
+    return <div className="flex min-h-screen items-center justify-center text-xl text-red-600">Ei tunnistautunut. Ole hyvä ja käynnistä LTI-työkalun kautta.</div>;
   }
 
   return (
@@ -301,9 +311,9 @@ export default function KuvaaItsesiTask() {
 
       {/* Save Status */}
       <div className="text-right text-sm mb-4">
-        {isSaving && <span className="text-[${PRIMARY_COLOR}]">Saving...</span>}
+        {isSaving && <span className="text-[${PRIMARY_COLOR}]">Tallennetaan...</span>}
         {!isSaving && saveError && <span className="text-red-600">{saveError}</span>}
-        {!isSaving && !saveError && <span className="text-gray-500">Saved</span>}
+        {!isSaving && !saveError && <span className="text-gray-500">Tallennettu</span>}
       </div>
 
       {/* Dynamic content */}
@@ -337,7 +347,8 @@ export default function KuvaaItsesiTask() {
           {state.stage < 6 && (
             <button
               onClick={goToNextStage}
-              className="px-4 py-2 border-none bg-[#1f2b42] text-white rounded-lg font-bold cursor-pointer opacity-100 hover:bg-[#1f2b42]/90 transition-colors"
+              disabled={!isStageValid}
+              className="px-4 py-2 border-none bg-[#1f2b42] text-white rounded-lg font-bold cursor-pointer opacity-100 hover:bg-[#1f2b42]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               Seuraava
@@ -362,9 +373,10 @@ export default function KuvaaItsesiTask() {
 interface Stage1Props {
   state: TaskState;
   setState: React.Dispatch<React.SetStateAction<TaskState>>;
+  onValidationChange: (isValid: boolean) => void;
 }
 
-const Stage1: React.FC<Stage1Props> = ({ state, setState }) => {
+const Stage1: React.FC<Stage1Props> = ({ state, setState, onValidationChange }) => {
   const subTitles = [
     ["Henkilökohtaiset vahvuudet",
       "Henkilökohtaiset vahvuudet ovat yksilön ominaisuuksia, kykyjä ja taitoja, jotka auttavat menestymään sekä työssä että henkilökohtaisessa elämässä. Nämä vahvuudet voivat liittyä persoonallisuuteen, käyttäytymiseen, vuorovaikutustaitoihin ja ongelmanratkaisutaitoihin. Ne ovat usein luonnollisia taipumuksia tai kehitettyjä kykyjä, jotka tukevat yksilön tavoitteiden saavuttamista ja hyvinvointia."
@@ -408,6 +420,10 @@ const Stage1: React.FC<Stage1Props> = ({ state, setState }) => {
   };
 
   const isNextEnabled = selectedList.length === 5;
+
+  useEffect(() => {
+    onValidationChange(isNextEnabled);
+  }, [isNextEnabled, onValidationChange]);
 
   return (
     <div>
@@ -455,9 +471,10 @@ const Stage1: React.FC<Stage1Props> = ({ state, setState }) => {
 interface Stage2Props {
   state: TaskState;
   setState: React.Dispatch<React.SetStateAction<TaskState>>;
+  onValidationChange: (isValid: boolean) => void;
 }
 
-const Stage2: React.FC<Stage2Props> = ({ state, setState }) => {
+const Stage2: React.FC<Stage2Props> = ({ state, setState, onValidationChange }) => {
   const allSkills = [
     { label: "Henkilökohtaiset vahvuudet", items: state.selected.vahvuudet },
     { label: "Kovat taidot", items: state.selected.kovat },
@@ -479,6 +496,10 @@ const Stage2: React.FC<Stage2Props> = ({ state, setState }) => {
   ).length;
   const totalToRate = allSkills.length;
   const isNextEnabled = ratedCount === totalToRate && totalToRate > 0;
+
+  useEffect(() => {
+    onValidationChange(isNextEnabled);
+  }, [isNextEnabled, onValidationChange]);
 
   return (
     <div>
@@ -544,9 +565,10 @@ const Stage2: React.FC<Stage2Props> = ({ state, setState }) => {
 interface Stage3Props {
   state: TaskState;
   setState: React.Dispatch<React.SetStateAction<TaskState>>;
+  onValidationChange: (isValid: boolean) => void;
 }
 
-const Stage3: React.FC<Stage3Props> = ({ state, setState }) => {
+const Stage3: React.FC<Stage3Props> = ({ state, setState, onValidationChange }) => {
   const allSkills = [
     ...state.selected.vahvuudet,
     ...state.selected.kovat,
@@ -575,6 +597,10 @@ const Stage3: React.FC<Stage3Props> = ({ state, setState }) => {
   };
 
   const isNextEnabled = state.top5.length === 5;
+
+  useEffect(() => {
+    onValidationChange(isNextEnabled);
+  }, [isNextEnabled, onValidationChange]);
 
   return (
     <div>
