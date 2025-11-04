@@ -1,10 +1,14 @@
 import { getEnv } from './env';
 
-interface MoodleUser {
+export interface MoodleUser {
   id: number;
-  fullname: string; // Assuming Moodle returns this
-  // Add other user properties if needed
+  username: string;
+  fullname: string;
+  email: string;
+  profileimageurl: string;
+  lastaccess?: number;
 }
+
 
 async function _moodleApiCall(wsfunction: string, params: Record<string, string>) {
   const env = getEnv();
@@ -39,11 +43,10 @@ async function _moodleApiCall(wsfunction: string, params: Record<string, string>
   }
 }
 
-export async function getCohortId(instructorEmail: string): Promise<number | null> {
+export async function getCohortId(instructorUsername: string): Promise<number | null> {
   const env = getEnv(); // Moved from top level
-  const emailPrefix = instructorEmail.split('@')[0];
   const data = await _moodleApiCall('core_cohort_search_cohorts', {
-    query: emailPrefix,
+    query: instructorUsername,
     'context[contextlevel]': 'coursecat',
     'context[instanceid]': '1',
   });

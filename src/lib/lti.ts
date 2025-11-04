@@ -10,12 +10,13 @@ const LTI_SESSION_COOKIE_NAME = 'lti-session';
 export interface LtiSessionData {
   sub: string;
   roles: string[];
-  contextId: string;
+  contextId: string | undefined;
   deploymentId: string;
   name?: string;
   email?: string;
   taskId?: string;
   isInstructor?: boolean;
+  cohortId?: number | null;
 }
 
 export async function verifyIdToken(id_token: string, nonce: string): Promise<any> {
@@ -48,6 +49,7 @@ async function getLtiSession(): Promise<IronSession<LtiSessionData>> {
     cookieOptions: {
       sameSite: 'none',
       secure: true,
+      httpOnly: true,
     },
   });
 }
@@ -70,5 +72,6 @@ export async function getLtiSessionCookie(): Promise<LtiSessionData | null> {
     email: session.email,
     taskId: session.taskId,
     isInstructor: session.isInstructor,
+    cohortId: session.cohortId,
   };
 }

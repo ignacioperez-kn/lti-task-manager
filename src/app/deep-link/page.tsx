@@ -34,13 +34,33 @@ export default function DeepLinkPage() {
       <form action="/api/deep-link" method="POST">
         <input type="hidden" name="deepLink" value={JSON.stringify(deepLink)} />
         <input type="hidden" name="idToken" value={JSON.stringify(idToken)} />
-        <input type="hidden" name="taskId" value="kuvaa-itsesi" />
-        <button
-          type="submit"
-          className="px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors duration-200"
-        >
-          Select Kuvaa-Itsesi Task
-        </button>
+        <div className="flex space-x-4">
+          <button
+            type="submit"
+            formAction="/api/deep-link"
+            className="px-6 py-3 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition-colors duration-200"
+            onClick={(e) => {
+              if (e.currentTarget.form) {
+                (e.currentTarget.form.elements.namedItem('taskId') as HTMLInputElement).value = 'kuvaa-itsesi';
+              }
+            }}
+          >
+            Select Kuvaa-Itsesi Task
+          </button>
+          <button
+            type="submit"
+            formAction="/api/deep-link"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:bg-blue-700 transition-colors duration-200"
+            onClick={(e) => {
+              if (e.currentTarget.form) {
+                (e.currentTarget.form.elements.namedItem('taskId') as HTMLInputElement).value = 'Pystyvyyden-itsearviointi-ilmarinen';
+              }
+            }}
+          >
+            Select Pystyvyyden Itsearviointi Ilmarinen Task
+          </button>
+        </div>
+        <input type="hidden" name="taskId" value="" />
       </form>
     </div>
   );

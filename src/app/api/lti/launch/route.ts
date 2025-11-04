@@ -3,6 +3,7 @@ import { setLtiSessionCookie, verifyIdToken } from "@/lib/lti";
 import { LtiClaims } from "@/lib/lti-claims";
 import { verifyState } from "@/lib/state";
 import { getEnv } from "@/lib/env";
+import { getCohortId, getUsersByIds } from "@/lib/moodle-api";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,7 +41,17 @@ export async function POST(req: NextRequest) {
     const customParams = claims.getCustomParameters();
     const taskId = customParams?.taskId;
 
-    const launchInfo = {
+    const launchInfo: {
+      roles: string[];
+      contextId: string | undefined;
+      deploymentId: string;
+      sub: string;
+      name: string | undefined;
+      email: string | undefined;
+      taskId: any;
+      isInstructor: boolean;
+      cohortId: number | null;
+    } = {
       roles: claims.getRoles(),
       contextId: claims.getContextId(),
       deploymentId: claims.getDeploymentId(),
@@ -49,7 +60,19 @@ export async function POST(req: NextRequest) {
       email: claims.getEmail(),
       taskId: taskId, // Add taskId to the session
       isInstructor: claims.isInstructor(), // Add isInstructor flag
+      cohortId: null, // Initialize cohortId
     };
+
+    if (launchInfo.isInstructor && launchInfo.sub) {
+      const users = await getUsersByIds([parseInt(launchInfo.sub, 10)]);
+      if (users && users.length > 0) {
+        const instructorUsername = users[0].username;
+        const cohortId = await getCohortId(instructorUsername);
+        if (cohortId) {
+          launchInfo.cohortId = cohortId;
+        }
+      }
+    }
     // --- KEY CHANGE ENDS HERE ---
 
     console.log("LTI LAUNCH: Launch info created:", launchInfo);

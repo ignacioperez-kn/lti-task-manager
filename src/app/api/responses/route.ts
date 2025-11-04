@@ -6,8 +6,8 @@ import { collection, getDocs } from 'firebase/firestore';
 import { getCohortId, getCohortMembers, getUsersByIds } from '@/lib/moodle-api';
 
 async function getParticipantIds(session: any): Promise<string[]> {
-  if (!session.email) {
-    console.error("Instructor email not found in session.");
+  if (!session.cohortId) {
+    console.error("Cohort ID not found in session.");
     return [];
   }
   if (!session.sub) {
@@ -15,13 +15,7 @@ async function getParticipantIds(session: any): Promise<string[]> {
     return [];
   }
 
-  const cohortId = await getCohortId(session.email);
-  if (!cohortId) {
-    console.error("Could not find a matching cohort for the instructor.");
-    return [];
-  }
-
-  const memberIds = await getCohortMembers(cohortId);
+  const memberIds = await getCohortMembers(session.cohortId);
   
   // Filter out the instructor's own ID
   const instructorId = String(session.sub);
