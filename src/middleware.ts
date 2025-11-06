@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEnv } from '@/lib/env';
 
 export function middleware(req: NextRequest) {
+  
+  
   const env = getEnv();
   const referer = req.headers.get('referer');
   const allowedReferer = env.PLATFORM_ISS;

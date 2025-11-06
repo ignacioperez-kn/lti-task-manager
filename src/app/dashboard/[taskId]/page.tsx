@@ -46,24 +46,33 @@ export default function DashboardPage() {
   const [responses, setResponses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedResponse, setSelectedResponse] = useState<any | null>(null);
+  const [moodleError, setMoodleError] = useState(false);
 
-  useEffect(() => {
-    const fetchResponses = async () => {
-      try {
-        const res = await fetch(`/api/responses?taskId=${taskId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setResponses(data);
+  const fetchResponses = async () => {
+    setIsLoading(true);
+    setMoodleError(false);
+    try {
+      const res = await fetch(`/api/responses?taskId=${taskId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setResponses(data);
+      } else {
+        const errorData = await res.json();
+        if (errorData.error === 'MOODLE_CONNECTION_FAILED') {
+          setMoodleError(true);
         } else {
           alert('Virhe haettaessa vastauksia.');
         }
-      } catch (error) {
-        console.error('Virhe haettaessa vastauksia:', error);
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Virhe haettaessa vastauksia:', error);
+      alert('Odottamaton virhe.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (taskId) {
       fetchResponses();
     }
@@ -71,6 +80,21 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return <div className="flex min-h-screen items-center justify-center">Ladataan...</div>;
+  }
+
+  if (moodleError) {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center text-center">
+        <h2 className="text-2xl font-semibold text-red-600 mb-4">Yhteys Moodle-palvelimeen epäonnistui</h2>
+        <p className="text-gray-700 mb-6">Emme saaneet haettua osallistujatietoja Moodlesta. Tämä voi johtua tilapäisestä ongelmasta.</p>
+        <button
+          onClick={fetchResponses}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors"
+        >
+          Yritä uudelleen
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -91,20 +115,28 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {responses.map((response) => (
-              <tr key={response.userId}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{response.userName}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{response.updatedAt?.seconds ? new Date(response.updatedAt.seconds * 1000).toLocaleString() : 'N/A'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button
-                    onClick={() => setSelectedResponse(response)}
-                    className="text-indigo-600 hover:text-indigo-900"
-                  >
-                    Näytä tehtävä
-                  </button>
+            {responses.length > 0 ? (
+              responses.map((response) => (
+                <tr key={response.userId}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{response.userName}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{response.updatedAt?.seconds ? new Date(response.updatedAt.seconds * 1000).toLocaleString() : 'N/A'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => setSelectedResponse(response)}
+                      className="text-indigo-600 hover:text-indigo-900"
+                    >
+                      Näytä tehtävä
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={3} className="px-6 py-4 text-center text-gray-500">
+                  Ei vastauksia tai osallistujia ei löytynyt.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

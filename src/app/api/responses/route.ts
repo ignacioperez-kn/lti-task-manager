@@ -7,8 +7,8 @@ import { getCohortId, getCohortMembers, getUsersByIds } from '@/lib/moodle-api';
 
 async function getParticipantIds(session: any): Promise<string[]> {
   if (!session.cohortId) {
-    console.error("Cohort ID not found in session.");
-    return [];
+    console.error("Cohort ID not found in session. Moodle connection likely failed.");
+    throw new Error("MOODLE_CONNECTION_FAILED");
   }
   if (!session.sub) {
     console.error("Instructor ID (sub) not found in session.");
@@ -86,7 +86,10 @@ export async function GET(req: NextRequest) {
     console.log("--- Request Complete ---");
     return NextResponse.json(responses);
 
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message === 'MOODLE_CONNECTION_FAILED') {
+      return NextResponse.json({ error: "MOODLE_CONNECTION_FAILED" }, { status: 500 });
+    }
     console.error('!!! Critical error in /api/responses:', error);
     return new NextResponse('Internal Server Error', { status: 500 });
   }

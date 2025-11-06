@@ -460,7 +460,7 @@ const Stage1: React.FC<Stage1Props> = ({ state, setState, onValidationChange }) 
       </div>
       {!isNextEnabled && (
         <div className="mt-2 text-red-500 font-semibold" id="error-note">
-          Valitse tasan 5 ennen siirtymistä.
+          Valitse 5 ennen siirtymistä.
         </div>
       )}
     </div>
@@ -640,7 +640,7 @@ const Stage3: React.FC<Stage3Props> = ({ state, setState, onValidationChange }) 
       </div>
       {!isNextEnabled && (
         <div className="mt-2 text-red-500 font-semibold">
-          Valitse tasan 5 taitoa ennen siirtymistä.
+          Valitse 5 taitoa ennen siirtymistä.
         </div>
       )}
     </div>

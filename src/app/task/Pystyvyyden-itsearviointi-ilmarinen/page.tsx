@@ -112,7 +112,7 @@ export default function PystyvyydenItsearviointiIlmarinen() {
     });
 
     const averageScore = correctedTotalScore / questions.length;
-
+    const totalScore = correctedTotalScore;
     try {
         const db = await dbPromise;
         const docRef = doc(db, 'tasks', session.sub, 'tasks', taskId);
@@ -120,6 +120,7 @@ export default function PystyvyydenItsearviointiIlmarinen() {
             output: {
                 answers,
                 averageScore: averageScore.toFixed(2),
+                totalScore : totalScore,
             },
             completed: true,
             updatedAt: serverTimestamp(),

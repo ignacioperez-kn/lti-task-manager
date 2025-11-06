@@ -23,24 +23,44 @@ async function _moodleApiCall(wsfunction: string, params: Record<string, string>
     ...params,
   });
 
-  try {
-    const response = await fetch(env.MOODLE_API_URL, {
-      method: 'POST',
-      body,
-    });
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(env.MOODLE_API_URL, {
+        method: 'POST',
+        body,
+      });
 
-    const responseText = await response.text();
-    console.log(`[Moodle API] Raw response for ${wsfunction}:`, responseText);
+      const responseText = await response.text();
 
-    if (!response.ok) {
-      console.error(`Moodle API error (${wsfunction}):`, response.status);
+      if (response.ok) {
+        console.log(`[Moodle API] Raw response for ${wsfunction}:`, responseText);
+        return JSON.parse(responseText);
+      }
+
+      if (response.status === 503) {
+        console.warn(`[Moodle API] Service unavailable (503) on attempt ${attempt} for ${wsfunction}. Retrying in 2s...`);
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+          continue; // Next attempt
+        }
+      }
+      
+      // Handle non-503 errors or final failed 503 attempt
+      console.error(`Moodle API error (${wsfunction}) - Status: ${response.status}`);
+      console.error(`[Moodle API] URL: ${env.MOODLE_API_URL}`);
+      console.error(`[Moodle API] Body: ${body.toString()}`);
+      console.error(`[Moodle API] Response: ${responseText}`);
       return null;
+
+    } catch (error) {
+      lastError = error;
+      console.error(`[Moodle API] Fetch failed on attempt ${attempt} for ${wsfunction}:`, error);
     }
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error(`Failed to fetch from Moodle API (${wsfunction}):`, error);
-    return null;
   }
+  
+  console.error(`[Moodle API] All attempts failed for ${wsfunction}. Last error:`, lastError);
+  return null;
 }
 
 export async function getCohortId(instructorUsername: string): Promise<number | null> {

@@ -10,3 +10,6 @@ npm-debug.log
 
 # Ignore Git directory
 .git
+
+# Ignore development folder
+src/app/dev
