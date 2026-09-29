@@ -11,3 +11,7 @@ steps:
 # Push the container image to Artifact Registry (EU; gcr.io/US removed 2026-09-29)
 images:
 - 'europe-north1-docker.pkg.dev/$_PROJECT_ID/$_SERVICE_NAME/$_SERVICE_NAME'
+
+# Build logs to Cloud Logging only, not a (US) logs bucket.
+options:
+  logging: CLOUD_LOGGING_ONLY

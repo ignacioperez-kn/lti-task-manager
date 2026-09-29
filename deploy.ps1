@@ -23,7 +23,9 @@ if ($PROJECT_ID -eq "your-gcp-project-id" -or $REGION -eq "your-gcp-region") {
 # --- Step 1: Run Cloud Build (Conditional) ---
 if (-not $SkipBuild) {
     Write-Host "Starting Google Cloud Build..." -ForegroundColor Cyan
-    gcloud builds submit --config cloudbuild.yaml --substitutions="_PROJECT_ID=$PROJECT_ID,_SERVICE_NAME=$SERVICE_NAME"
+    # Build in the EU and stage the source in an EU bucket; the default would
+    # recreate <project>_cloudbuild in the US (audit F29, deleted 2026-09-29).
+    gcloud builds submit --project $PROJECT_ID --region $REGION --gcs-source-staging-dir "gs://run-sources-$PROJECT_ID-$REGION/cloudbuild-source" --config cloudbuild.yaml --substitutions="_PROJECT_ID=$PROJECT_ID,_SERVICE_NAME=$SERVICE_NAME"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Google Cloud Build failed. See logs above for details." -ForegroundColor Red
         exit 1
