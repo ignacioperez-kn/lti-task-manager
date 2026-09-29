@@ -122,11 +122,11 @@ steps:
   args:
   - '-c'
   - |
-    docker build --no-cache -t gcr.io/$_PROJECT_ID/$_SERVICE_NAME .
+    docker build --no-cache -t europe-north1-docker.pkg.dev/$_PROJECT_ID/$_SERVICE_NAME/$_SERVICE_NAME .
 
 # Push the container image to Google Container Registry
 images:
-- 'gcr.io/$_PROJECT_ID/$_SERVICE_NAME'
+- 'europe-north1-docker.pkg.dev/$_PROJECT_ID/$_SERVICE_NAME/$_SERVICE_NAME'
 ```
 
 ---
@@ -152,7 +152,7 @@ $REGION = "your-gcp-region"       # e.g., us-central1, europe-west1 <-- REPLACE 
 $SERVICE_NAME = "your-service-name" # e.g., my-lti-app <-- REPLACE THIS
 
 # --- Image Name (Derived from config) ---
-$IMAGE_NAME = "gcr.io/$PROJECT_ID/$SERVICE_NAME"
+$IMAGE_NAME = "$REGION-docker.pkg.dev/$PROJECT_ID/$SERVICE_NAME/$SERVICE_NAME"
 
 # --- Pre-flight Checks ---
 if ($PROJECT_ID -eq "your-gcp-project-id" -or $REGION -eq "your-gcp-region") {

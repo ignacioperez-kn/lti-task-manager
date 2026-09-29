@@ -6,8 +6,8 @@ steps:
   args:
   - '-c'
   - |
-    docker build --no-cache -t gcr.io/$_PROJECT_ID/$_SERVICE_NAME .
+    docker build --no-cache -t europe-north1-docker.pkg.dev/$_PROJECT_ID/$_SERVICE_NAME/$_SERVICE_NAME .
 
-# Push the container image to Container Registry
+# Push the container image to Artifact Registry (EU; gcr.io/US removed 2026-09-29)
 images:
-- 'gcr.io/$_PROJECT_ID/$_SERVICE_NAME'
+- 'europe-north1-docker.pkg.dev/$_PROJECT_ID/$_SERVICE_NAME/$_SERVICE_NAME'

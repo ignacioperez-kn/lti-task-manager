@@ -12,7 +12,7 @@ $REGION = "europe-north1" # e.g., us-central1, europe-west1
 
 # --- Service Details ---
 $SERVICE_NAME = "lti-task-manager"
-$IMAGE_NAME = "gcr.io/$PROJECT_ID/$SERVICE_NAME"
+$IMAGE_NAME = "$REGION-docker.pkg.dev/$PROJECT_ID/$SERVICE_NAME/$SERVICE_NAME"  # EU Artifact Registry; gcr.io (US) removed 2026-09-29
 
 # --- Pre-flight Checks ---
 if ($PROJECT_ID -eq "your-gcp-project-id" -or $REGION -eq "your-gcp-region") {

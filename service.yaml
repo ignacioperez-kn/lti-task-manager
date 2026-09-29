@@ -8,7 +8,7 @@ spec:
   template:
     spec:
       containers:
-      - image: gcr.io/moodle-kn/lti-task-manager # Will be updated by the build step
+      - image: europe-north1-docker.pkg.dev/moodle-kn/lti-task-manager/lti-task-manager # Will be updated by the build step
         ports:
         - containerPort: 3000
         env:
